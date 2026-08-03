@@ -1,0 +1,37 @@
+# RUBSAL POS — local development infrastructure
+# Usage:  docker compose up -d
+#         (Postgres on :5432, pgAdmin on http://localhost:5050)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rubsal-pos-db
+    environment:
+      POSTGRES_DB: rubsal_pos
+      POSTGRES_USER: rubsal
+      POSTGRES_PASSWORD: rubsal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rubsal -d rubsal_pos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rubsal-pos-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@rubsal.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: pos
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/rubsal_pos}
+    username: ${DB_USER:rubsal}
+    password: ${DB_PASSWORD:rubsal}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # schema is owned by Flyway, never Hibernate
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+server:
+  # Render (and most PaaS) inject PORT; fall back to SERVER_PORT then 8080 locally.
+  port: ${PORT:${SERVER_PORT:8080}}
+
+# Application-specific settings
+app:
+  security:
+    jwt:
+      # Base64 secret (min 256-bit). OVERRIDE in every real environment via env var.
+      secret: ${JWT_SECRET:c2VjdXJlLWRldi1vbmx5LXNlY3JldC1jaGFuZ2UtbWUtaW4tcHJvZHVjdGlvbi0xMjM0NTY3OA==}
+      access-token-ttl: ${JWT_ACCESS_TTL:PT30M}      # 30 minutes
+      refresh-token-ttl: ${JWT_REFRESH_TTL:P14D}     # 14 days
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  uploads:
+    dir: ${UPLOADS_DIR:./uploads}
+
+logging:
+  level:
+    org.hibernate.SQL: ${SQL_LOG:info}
+
+---
+# Local development convenience profile
+spring:
+  config:
+    activate:
+      on-profile: local
+  jpa:
+    show-sql: true
+logging:
+  level:
+    org.hibernate.SQL: debug
