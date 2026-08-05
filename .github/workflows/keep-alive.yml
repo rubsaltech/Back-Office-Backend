@@ -1,0 +1,23 @@
+name: Keep backend awake
+
+# Pings the Render backend's /ping endpoint so its free instance doesn't sleep.
+# This is the ONLY keep-alive mechanism — the app makes no self-calls.
+# GitHub cron can be delayed a few minutes under load, so we run every 10 min
+# (Render sleeps after ~15 min idle).
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /ping
+        env:
+          # Override in repo Settings → Secrets and variables → Actions → Variables.
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://back-office-backend-u54l.onrender.com' }}
+        run: |
+          echo "Pinging $BACKEND_URL/ping"
+          curl -fsS --max-time 30 "$BACKEND_URL/ping" && echo " — OK"

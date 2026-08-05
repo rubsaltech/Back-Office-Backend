@@ -40,6 +40,7 @@ public class SecurityConfig {
                                 "/api/v1/terminal/**",
                                 "/actuator/health",
                                 "/actuator/health/**",
+                                "/ping",
                                 "/uploads/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",

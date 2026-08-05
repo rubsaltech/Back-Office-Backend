@@ -13,14 +13,20 @@ import com.backoffice.pos.store.StoreRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/** Seeds a demo business/owner/cashier on first run so the app is usable immediately. */
+/**
+ * Seeds a demo business/owner/cashier on first run so the app is usable immediately.
+ * Enabled by default (dev). Set {@code app.seed.demo=false} (env {@code APP_SEED_DEMO=false})
+ * in production so it never creates the demo tenant.
+ */
 @Component
+@ConditionalOnProperty(name = "app.seed.demo", havingValue = "true", matchIfMissing = true)
 public class DataSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
