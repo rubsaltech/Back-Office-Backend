@@ -20,4 +20,9 @@ jobs:
           BACKEND_URL: ${{ vars.BACKEND_URL || 'https://back-office-backend-u54l.onrender.com' }}
         run: |
           echo "Pinging $BACKEND_URL/ping"
-          curl -fsS --max-time 30 "$BACKEND_URL/ping" && echo " — OK"
+          # A sleeping free instance can take 30-60s to wake, so allow a long
+          # per-attempt timeout and retry (a timed-out attempt still starts the wake).
+          curl -fsS \
+            --retry 5 --retry-all-errors --retry-delay 15 \
+            --max-time 90 \
+            "$BACKEND_URL/ping" && echo " — OK"
