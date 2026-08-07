@@ -3,6 +3,7 @@ package com.backoffice.pos.auth;
 import com.backoffice.pos.business.Business;
 import com.backoffice.pos.business.BusinessRepository;
 import com.backoffice.pos.common.exception.ApiException;
+import com.backoffice.pos.mail.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -24,12 +25,14 @@ public class PasswordResetService {
     private final BusinessRepository businesses;
     private final PasswordResetOtpRepository otps;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     public PasswordResetService(BusinessRepository businesses, PasswordResetOtpRepository otps,
-                                PasswordEncoder passwordEncoder) {
+                                PasswordEncoder passwordEncoder, EmailService emailService) {
         this.businesses = businesses;
         this.otps = otps;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     /** Always succeeds (does not reveal whether the email exists). */
@@ -42,8 +45,18 @@ public class PasswordResetService {
             otp.setCodeHash(passwordEncoder.encode(code));
             otp.setExpiresAt(Instant.now().plus(OTP_TTL_MINUTES, ChronoUnit.MINUTES));
             otps.save(otp);
-            // Dev: no email provider wired yet — log the code so it can be used.
-            log.info("Password reset OTP for {} is {} (valid {} min)", email, code, OTP_TTL_MINUTES);
+
+            if (emailService.isEnabled()) {
+                try {
+                    emailService.sendPasswordResetOtp(email, code, OTP_TTL_MINUTES);
+                    log.info("Password reset OTP emailed to {}", email);
+                } catch (Exception e) {
+                    log.error("Failed to send password reset email to {}: {}", email, e.getMessage());
+                }
+            } else {
+                // Dev fallback (no SMTP configured): log the code so it can be used.
+                log.info("Password reset OTP for {} is {} (valid {} min) — SMTP not configured", email, code, OTP_TTL_MINUTES);
+            }
         });
     }
 

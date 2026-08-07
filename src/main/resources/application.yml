@@ -22,6 +22,20 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+        transport:
+          protocol: smtp
+
   servlet:
     multipart:
       max-file-size: 5MB
@@ -43,6 +57,11 @@ app:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
   uploads:
     dir: ${UPLOADS_DIR:./uploads}
+  mail:
+    # "From" address for outgoing emails. Defaults to the SMTP username.
+    # When blank (no MAIL_USERNAME), emails are disabled and the OTP is logged instead.
+    from: ${MAIL_FROM:${MAIL_USERNAME:}}
+    from-name: ${MAIL_FROM_NAME:RUBSAL POS}
 
 logging:
   level:
