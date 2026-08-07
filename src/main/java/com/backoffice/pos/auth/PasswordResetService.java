@@ -47,12 +47,8 @@ public class PasswordResetService {
             otps.save(otp);
 
             if (emailService.isEnabled()) {
-                try {
-                    emailService.sendPasswordResetOtp(email, code, OTP_TTL_MINUTES);
-                    log.info("Password reset OTP emailed to {}", email);
-                } catch (Exception e) {
-                    log.error("Failed to send password reset email to {}: {}", email, e.getMessage());
-                }
+                // Fire-and-forget on a background thread (handles its own errors).
+                emailService.sendPasswordResetOtp(email, code, OTP_TTL_MINUTES);
             } else {
                 // Dev fallback (no SMTP configured): log the code so it can be used.
                 log.info("Password reset OTP for {} is {} (valid {} min) — SMTP not configured", email, code, OTP_TTL_MINUTES);

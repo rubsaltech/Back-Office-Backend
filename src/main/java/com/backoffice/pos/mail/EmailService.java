@@ -1,10 +1,13 @@
 package com.backoffice.pos.mail;
 
 import jakarta.mail.internet.MimeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -13,6 +16,8 @@ import java.io.UnsupportedEncodingException;
 /** Sends transactional emails via the configured SMTP server (e.g. Gmail). */
 @Service
 public class EmailService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
     private final String from;
@@ -31,18 +36,25 @@ public class EmailService {
         return mailSender != null && StringUtils.hasText(from);
     }
 
-    public void sendPasswordResetOtp(String to, String code, int ttlMinutes) throws Exception {
-        MimeMessage message = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(message, MimeMessageHelper.MULTIPART_MODE_MIXED, "UTF-8");
+    /** Sent on a background thread — never blocks the HTTP request. */
+    @Async
+    public void sendPasswordResetOtp(String to, String code, int ttlMinutes) {
         try {
-            helper.setFrom(from, fromName);
-        } catch (UnsupportedEncodingException e) {
-            helper.setFrom(from);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, MimeMessageHelper.MULTIPART_MODE_MIXED, "UTF-8");
+            try {
+                helper.setFrom(from, fromName);
+            } catch (UnsupportedEncodingException e) {
+                helper.setFrom(from);
+            }
+            helper.setTo(to);
+            helper.setSubject("Your RUBSAL POS password reset code");
+            helper.setText(otpHtml(code, ttlMinutes), true);
+            mailSender.send(message);
+            log.info("Password reset OTP emailed to {}", to);
+        } catch (Exception e) {
+            log.error("Failed to send password reset email to {}: {}", to, e.getMessage());
         }
-        helper.setTo(to);
-        helper.setSubject("Your RUBSAL POS password reset code");
-        helper.setText(otpHtml(code, ttlMinutes), true);
-        mailSender.send(message);
     }
 
     private String otpHtml(String code, int ttlMinutes) {
