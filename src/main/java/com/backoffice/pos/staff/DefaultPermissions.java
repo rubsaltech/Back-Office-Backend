@@ -17,7 +17,7 @@ public final class DefaultPermissions {
     public static final Map<String, List<String>> ROLE_TEMPLATES = Map.of(
             "Manager", List.of("*"),
             "Cashier", List.of(
-                    "dashboard.view", "product.view", "category.view",
+                    "dashboard.view", "product.view", "category.view", "service.view",
                     "floor.view", "table.view",
                     "order.view", "order.create", "order.pay"),
             "Kitchen", List.of("order.view")
@@ -29,6 +29,7 @@ public final class DefaultPermissions {
         put(m, "store", "store");
         put(m, "category", "category");
         put(m, "product", "product");
+        put(m, "service", "service");
         m.put("inventory.view", "View inventory");
         m.put("inventory.edit", "Edit inventory");
         put(m, "employee", "employee");

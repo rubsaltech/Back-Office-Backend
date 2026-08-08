@@ -147,6 +147,17 @@
 							<artifactId>lombok</artifactId>
 						</exclude>
 					</excludes>
+					<!--
+						Local dev only: `mvnw spring-boot:run` activates the `local`
+						Spring profile, which loads application-local.yml (Neon creds).
+						This does NOT affect the packaged jar — on Render the profile
+						is off and the datasource comes from the DB_URL/DB_USER/
+						DB_PASSWORD env vars instead. Override for one run with:
+						  mvnw spring-boot:run "-Dspring-boot.run.profiles=default"
+					-->
+					<profiles>
+						<profile>local</profile>
+					</profiles>
 				</configuration>
 			</plugin>
 			<plugin>
