@@ -5,6 +5,8 @@ import com.backoffice.pos.staff.Permission;
 import com.backoffice.pos.staff.PermissionRepository;
 import com.backoffice.pos.staff.Role;
 import com.backoffice.pos.staff.RoleRepository;
+import com.backoffice.pos.order.PaymentDevice;
+import com.backoffice.pos.order.PaymentDeviceRepository;
 import com.backoffice.pos.store.Store;
 import com.backoffice.pos.store.StoreRepository;
 import org.springframework.stereotype.Service;
@@ -23,11 +25,14 @@ public class BusinessProvisioningService {
     private final PermissionRepository permissions;
     private final RoleRepository roles;
     private final StoreRepository stores;
+    private final PaymentDeviceRepository paymentDevices;
 
-    public BusinessProvisioningService(PermissionRepository permissions, RoleRepository roles, StoreRepository stores) {
+    public BusinessProvisioningService(PermissionRepository permissions, RoleRepository roles, StoreRepository stores,
+                                       PaymentDeviceRepository paymentDevices) {
         this.permissions = permissions;
         this.roles = roles;
         this.stores = stores;
+        this.paymentDevices = paymentDevices;
     }
 
     @Transactional
@@ -71,5 +76,13 @@ public class BusinessProvisioningService {
         main.setName("Main Store");
         main.setMain(true);
         stores.save(main);
+
+        // 4) A default card terminal (selectable at Card payment in the POS)
+        PaymentDevice device = new PaymentDevice();
+        device.setBusinessId(businessId);
+        device.setStoreId(main.getId());
+        device.setSerialNumber("0821595192");
+        device.setLabel("Main Terminal");
+        paymentDevices.save(device);
     }
 }
