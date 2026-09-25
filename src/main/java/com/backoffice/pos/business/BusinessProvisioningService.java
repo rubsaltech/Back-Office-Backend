@@ -5,10 +5,6 @@ import com.backoffice.pos.staff.Permission;
 import com.backoffice.pos.staff.PermissionRepository;
 import com.backoffice.pos.staff.Role;
 import com.backoffice.pos.staff.RoleRepository;
-import com.backoffice.pos.order.PaymentDevice;
-import com.backoffice.pos.order.PaymentDeviceRepository;
-import com.backoffice.pos.store.Store;
-import com.backoffice.pos.store.StoreRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +20,18 @@ public class BusinessProvisioningService {
 
     private final PermissionRepository permissions;
     private final RoleRepository roles;
-    private final StoreRepository stores;
-    private final PaymentDeviceRepository paymentDevices;
 
-    public BusinessProvisioningService(PermissionRepository permissions, RoleRepository roles, StoreRepository stores,
-                                       PaymentDeviceRepository paymentDevices) {
+    public BusinessProvisioningService(PermissionRepository permissions, RoleRepository roles) {
         this.permissions = permissions;
         this.roles = roles;
-        this.stores = stores;
-        this.paymentDevices = paymentDevices;
     }
 
+    /**
+     * Seeds the permission catalog and starter roles for a new business. NOTE: no
+     * store is created here any more — after signup the owner completes a
+     * compulsory "create your first store" form (which picks the store's vertical
+     * and seeds its default card terminal). See StoreService#create.
+     */
     @Transactional
     public void provisionDefaults(Business business) {
         Long businessId = business.getId();
@@ -69,20 +66,5 @@ public class BusinessProvisioningService {
             role.setPermissions(granted);
             roles.save(role);
         });
-
-        // 3) Main store
-        Store main = new Store();
-        main.setBusinessId(businessId);
-        main.setName("Main Store");
-        main.setMain(true);
-        stores.save(main);
-
-        // 4) A default card terminal (selectable at Card payment in the POS)
-        PaymentDevice device = new PaymentDevice();
-        device.setBusinessId(businessId);
-        device.setStoreId(main.getId());
-        device.setSerialNumber("0821595192");
-        device.setLabel("Main Terminal");
-        paymentDevices.save(device);
     }
 }

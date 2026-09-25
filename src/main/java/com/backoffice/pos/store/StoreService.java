@@ -1,6 +1,8 @@
 package com.backoffice.pos.store;
 
 import com.backoffice.pos.common.exception.NotFoundException;
+import com.backoffice.pos.order.PaymentDevice;
+import com.backoffice.pos.order.PaymentDeviceRepository;
 import com.backoffice.pos.store.dto.StoreRequest;
 import com.backoffice.pos.store.dto.StoreResponse;
 import com.backoffice.pos.tenancy.TenantContext;
@@ -13,9 +15,11 @@ import java.util.List;
 public class StoreService {
 
     private final StoreRepository stores;
+    private final PaymentDeviceRepository paymentDevices;
 
-    public StoreService(StoreRepository stores) {
+    public StoreService(StoreRepository stores, PaymentDeviceRepository paymentDevices) {
         this.stores = stores;
+        this.paymentDevices = paymentDevices;
     }
 
     @Transactional(readOnly = true)
@@ -31,10 +35,29 @@ public class StoreService {
 
     @Transactional
     public StoreResponse create(StoreRequest req) {
+        Long businessId = TenantContext.requireBusinessId();
+        List<Store> existing = stores.findByBusinessIdOrderByCreatedAtAsc(businessId);
+
         Store store = new Store();
-        store.setBusinessId(TenantContext.requireBusinessId());
+        store.setBusinessId(businessId);
         apply(store, req);
-        return StoreResponse.from(stores.save(store));
+        // The very first store is the "main" store by default.
+        if (existing.isEmpty()) {
+            store.setMain(true);
+        }
+        Store saved = stores.save(store);
+
+        // Seed a default card terminal on the first store so Card payments work.
+        if (existing.isEmpty()
+                && !paymentDevices.existsByBusinessIdAndSerialNumber(businessId, "0821595192")) {
+            PaymentDevice device = new PaymentDevice();
+            device.setBusinessId(businessId);
+            device.setStoreId(saved.getId());
+            device.setSerialNumber("0821595192");
+            device.setLabel("Main Terminal");
+            paymentDevices.save(device);
+        }
+        return StoreResponse.from(saved);
     }
 
     @Transactional
@@ -56,6 +79,11 @@ public class StoreService {
 
     private void apply(Store store, StoreRequest req) {
         store.setName(req.name());
+        if (req.type() != null) {
+            store.setType(req.type());
+        }
+        store.setPhone(req.phone());
+        store.setEmail(req.email());
         store.setMain(req.main());
         store.setAddress(req.address());
         store.setLatitude(req.latitude());

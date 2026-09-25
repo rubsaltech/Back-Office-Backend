@@ -7,9 +7,12 @@ import com.backoffice.pos.business.BusinessStatus;
 import com.backoffice.pos.staff.Employee;
 import com.backoffice.pos.staff.EmployeeRepository;
 import com.backoffice.pos.staff.Role;
+import com.backoffice.pos.order.PaymentDevice;
+import com.backoffice.pos.order.PaymentDeviceRepository;
 import com.backoffice.pos.staff.RoleRepository;
 import com.backoffice.pos.store.Store;
 import com.backoffice.pos.store.StoreRepository;
+import com.backoffice.pos.store.StoreType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -36,15 +39,18 @@ public class DataSeeder implements CommandLineRunner {
     private final StoreRepository stores;
     private final RoleRepository roles;
     private final EmployeeRepository employees;
+    private final PaymentDeviceRepository paymentDevices;
     private final PasswordEncoder passwordEncoder;
 
     public DataSeeder(BusinessRepository businesses, BusinessProvisioningService provisioning, StoreRepository stores,
-                      RoleRepository roles, EmployeeRepository employees, PasswordEncoder passwordEncoder) {
+                      RoleRepository roles, EmployeeRepository employees, PaymentDeviceRepository paymentDevices,
+                      PasswordEncoder passwordEncoder) {
         this.businesses = businesses;
         this.provisioning = provisioning;
         this.stores = stores;
         this.roles = roles;
         this.employees = employees;
+        this.paymentDevices = paymentDevices;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -67,8 +73,21 @@ public class DataSeeder implements CommandLineRunner {
 
         provisioning.provisionDefaults(business);
 
-        Store mainStore = stores.findByBusinessIdOrderByCreatedAtAsc(business.getId())
-                .stream().findFirst().orElse(null);
+        // Demo store (restaurant vertical) + its default card terminal.
+        Store mainStore = new Store();
+        mainStore.setBusinessId(business.getId());
+        mainStore.setName("Main Store");
+        mainStore.setType(StoreType.RESTAURANT);
+        mainStore.setMain(true);
+        mainStore = stores.save(mainStore);
+
+        PaymentDevice device = new PaymentDevice();
+        device.setBusinessId(business.getId());
+        device.setStoreId(mainStore.getId());
+        device.setSerialNumber("0821595192");
+        device.setLabel("Main Terminal");
+        paymentDevices.save(device);
+
         Role cashierRole = roles.findByBusinessIdAndName(business.getId(), "Cashier").orElse(null);
 
         Employee cashier = new Employee();

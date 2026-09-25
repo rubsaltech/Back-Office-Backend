@@ -67,13 +67,18 @@ public class OrderService {
         order.setKitchenNote(req.kitchenNote());
         order.setHandlerName(safeHandlerName());
 
-        if (req.type() == OrderType.DINE_IN && req.tableId() != null) {
+        // A table is attached whenever one is supplied (dine-in verticals only);
+        // customer details are stored whenever supplied (delivery/repair/service).
+        // The store's vertical decides which the POS collects — the backend just
+        // records what it is given.
+        if (req.tableId() != null) {
             RestaurantTable table = tables.findByIdAndBusinessId(req.tableId(), businessId)
                     .orElseThrow(() -> NotFoundException.of("Table", req.tableId()));
             order.setTableId(table.getId());
             order.setTableName(table.getName());
         }
-        if (req.type() == OrderType.DELIVERY) {
+        if (StringUtils.hasText(req.customerName()) || StringUtils.hasText(req.customerAddress())
+                || StringUtils.hasText(req.customerPhone())) {
             order.setCustomerName(req.customerName());
             order.setCustomerPhone(req.customerPhone());
             order.setCustomerAddress(req.customerAddress());

@@ -22,6 +22,15 @@ public class Store extends TenantEntity {
     @Column(name = "is_main", nullable = false)
     private boolean main = false;
 
+    /** The vertical (restaurant, retail, …) that drives the POS flow. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private StoreType type = StoreType.RESTAURANT;
+
+    private String phone;
+
+    private String email;
+
     private String address;
 
     private Double latitude;
