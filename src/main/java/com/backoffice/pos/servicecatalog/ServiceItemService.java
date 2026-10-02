@@ -4,6 +4,7 @@ import com.backoffice.pos.catalog.Product;
 import com.backoffice.pos.catalog.ProductRepository;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
+import com.backoffice.pos.label.LabelAttachments;
 import com.backoffice.pos.servicecatalog.dto.ServiceItemRequest;
 import com.backoffice.pos.servicecatalog.dto.ServiceItemResponse;
 import com.backoffice.pos.tenancy.TenantContext;
@@ -20,10 +21,13 @@ public class ServiceItemService {
 
     private final ServiceItemRepository services;
     private final ProductRepository products;
+    private final LabelAttachments labelAttachments;
 
-    public ServiceItemService(ServiceItemRepository services, ProductRepository products) {
+    public ServiceItemService(ServiceItemRepository services, ProductRepository products,
+                              LabelAttachments labelAttachments) {
         this.services = services;
         this.products = products;
+        this.labelAttachments = labelAttachments;
     }
 
     @Transactional(readOnly = true)
@@ -76,6 +80,20 @@ public class ServiceItemService {
             s.setStatus(req.status());
         }
         rebuildProducts(s, req, businessId);
+        rebuildLabels(s, req, businessId);
+    }
+
+    private void rebuildLabels(ServiceItem s, ServiceItemRequest req, Long businessId) {
+        s.clearLabels();
+        for (LabelAttachments.Resolved r : labelAttachments.resolve(req.labels(), businessId)) {
+            ServiceItemLabel sl = new ServiceItemLabel();
+            sl.setLabelId(r.labelId());
+            sl.setLabelName(r.name());
+            sl.setLabelType(r.type());
+            sl.setSortOrder(r.sortOrder());
+            sl.getValues().addAll(r.values());
+            s.addLabel(sl);
+        }
     }
 
     private void rebuildProducts(ServiceItem s, ServiceItemRequest req, Long businessId) {

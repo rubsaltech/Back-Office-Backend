@@ -140,23 +140,7 @@ public class OrderService {
             item.setSpecialInstructions(line.specialInstructions());
             item.setSortOrder(sort++);
 
-            BigDecimal modifierTotal = BigDecimal.ZERO;
-            if (line.modifiers() != null) {
-                for (OrderRequest.Modifier m : line.modifiers()) {
-                    if (m == null || !StringUtils.hasText(m.name())) {
-                        continue;
-                    }
-                    BigDecimal delta = nvl(m.priceDelta());
-                    OrderItemModifier snapshot = new OrderItemModifier();
-                    snapshot.setGroupName(m.groupName());
-                    snapshot.setName(m.name());
-                    snapshot.setPriceDelta(delta);
-                    item.addModifier(snapshot);
-                    modifierTotal = modifierTotal.add(delta);
-                }
-            }
-
-            BigDecimal unitPrice = nvl(product.getPrice()).add(modifierTotal);
+            BigDecimal unitPrice = nvl(product.getPrice());
             item.setUnitPrice(unitPrice);
             item.setTaxAmount(nvl(product.getTaxAmount()).multiply(BigDecimal.valueOf(qty)));
             item.setLineTotal(unitPrice.multiply(BigDecimal.valueOf(qty)));

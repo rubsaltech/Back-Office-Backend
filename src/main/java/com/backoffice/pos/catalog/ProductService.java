@@ -7,6 +7,7 @@ import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
+import com.backoffice.pos.label.LabelAttachments;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,10 +32,13 @@ public class ProductService {
 
     private final ProductRepository products;
     private final CategoryRepository categories;
+    private final LabelAttachments labelAttachments;
 
-    public ProductService(ProductRepository products, CategoryRepository categories) {
+    public ProductService(ProductRepository products, CategoryRepository categories,
+                          LabelAttachments labelAttachments) {
         this.products = products;
         this.categories = categories;
+        this.labelAttachments = labelAttachments;
     }
 
     @Transactional(readOnly = true)
@@ -159,32 +163,19 @@ public class ProductService {
         if (req.totalQty() != null) {
             p.setTotalQty(req.totalQty());
         }
-        rebuildModifiers(p, req);
+        rebuildLabels(p, req, businessId);
     }
 
-    private void rebuildModifiers(Product p, ProductRequest req) {
-        p.clearModifierGroups();
-        if (req.modifierGroups() == null) {
-            return;
-        }
-        for (ProductRequest.Group g : req.modifierGroups()) {
-            ModifierGroup group = new ModifierGroup();
-            group.setName(g.name());
-            group.setRequired(g.required());
-            group.setMinSelect(g.minSelect());
-            group.setMaxSelect(g.maxSelect());
-            group.setSortOrder(g.sortOrder());
-            if (g.options() != null) {
-                for (ProductRequest.Option o : g.options()) {
-                    ModifierOption option = new ModifierOption();
-                    option.setName(o.name());
-                    option.setPriceDelta(nvl(o.priceDelta()));
-                    option.setDefault(o.isDefault());
-                    option.setSortOrder(o.sortOrder());
-                    group.addOption(option);
-                }
-            }
-            p.addModifierGroup(group);
+    private void rebuildLabels(Product p, ProductRequest req, Long businessId) {
+        p.clearLabels();
+        for (LabelAttachments.Resolved r : labelAttachments.resolve(req.labels(), businessId)) {
+            ProductLabel pl = new ProductLabel();
+            pl.setLabelId(r.labelId());
+            pl.setLabelName(r.name());
+            pl.setLabelType(r.type());
+            pl.setSortOrder(r.sortOrder());
+            pl.getValues().addAll(r.values());
+            p.addLabel(pl);
         }
     }
 

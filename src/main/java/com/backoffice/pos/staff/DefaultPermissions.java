@@ -30,6 +30,7 @@ public final class DefaultPermissions {
         put(m, "category", "category");
         put(m, "product", "product");
         put(m, "service", "service");
+        put(m, "label", "label");
         m.put("inventory.view", "View inventory");
         m.put("inventory.edit", "Edit inventory");
         put(m, "employee", "employee");

@@ -44,12 +44,8 @@ public record OrderResponse(
             BigDecimal unitPrice,
             BigDecimal taxAmount,
             String specialInstructions,
-            BigDecimal lineTotal,
-            List<ModifierInfo> modifiers
+            BigDecimal lineTotal
     ) {
-    }
-
-    public record ModifierInfo(String groupName, String name, BigDecimal priceDelta) {
     }
 
     public record PaymentInfo(String method, String deviceSerial, BigDecimal amount, String status) {
@@ -71,11 +67,8 @@ public record OrderResponse(
     }
 
     private static Item toItem(OrderItem i) {
-        List<ModifierInfo> mods = i.getModifiers().stream()
-                .map(m -> new ModifierInfo(m.getGroupName(), m.getName(), m.getPriceDelta()))
-                .toList();
         return new Item(i.getId(), i.getProductId(), i.getProductName(), i.getSeatNumber(),
                 i.getQuantity(), i.getUnitPrice(), i.getTaxAmount(), i.getSpecialInstructions(),
-                i.getLineTotal(), mods);
+                i.getLineTotal());
     }
 }

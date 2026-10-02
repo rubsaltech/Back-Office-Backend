@@ -75,14 +75,14 @@ public class Product extends TenantEntity {
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
-    private List<ModifierGroup> modifierGroups = new ArrayList<>();
+    private List<ProductLabel> labels = new ArrayList<>();
 
-    public void addModifierGroup(ModifierGroup group) {
-        group.setProduct(this);
-        modifierGroups.add(group);
+    public void addLabel(ProductLabel label) {
+        label.setProduct(this);
+        labels.add(label);
     }
 
-    public void clearModifierGroups() {
-        modifierGroups.clear();
+    public void clearLabels() {
+        labels.clear();
     }
 }

@@ -23,20 +23,12 @@ public record OrderRequest(
         @NotEmpty List<Line> items,
         Payment payment
 ) {
-    /** A cart line: a product, quantity, optional seat, and selected modifiers. */
+    /** A cart line: a product, quantity, and optional seat. */
     public record Line(
             @NotNull Long productId,
             Integer seatNumber,
             Integer quantity,
-            String specialInstructions,
-            List<Modifier> modifiers
-    ) {
-    }
-
-    public record Modifier(
-            String groupName,
-            String name,
-            BigDecimal priceDelta
+            String specialInstructions
     ) {
     }
 

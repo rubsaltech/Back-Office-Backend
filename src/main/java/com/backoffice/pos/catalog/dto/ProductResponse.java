@@ -1,8 +1,9 @@
 package com.backoffice.pos.catalog.dto;
 
 import com.backoffice.pos.catalog.CatalogStatus;
-import com.backoffice.pos.catalog.ModifierGroup;
 import com.backoffice.pos.catalog.Product;
+import com.backoffice.pos.catalog.ProductLabel;
+import com.backoffice.pos.label.dto.AttachedLabelResponse;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,33 +25,22 @@ public record ProductResponse(
         int availableQty,
         int quantitySold,
         int totalQty,
-        List<GroupResponse> modifierGroups
+        List<AttachedLabelResponse> labels
 ) {
-    public record GroupResponse(
-            Long id, String name, boolean required, int minSelect, int maxSelect, int sortOrder,
-            List<OptionResponse> options) {
-    }
-
-    public record OptionResponse(Long id, String name, BigDecimal priceDelta, boolean isDefault, int sortOrder) {
-    }
-
     public static ProductResponse from(Product p) {
-        List<GroupResponse> groups = p.getModifierGroups().stream()
-                .map(ProductResponse::toGroup)
+        List<AttachedLabelResponse> labels = p.getLabels().stream()
+                .map(ProductResponse::toLabel)
                 .toList();
         return new ProductResponse(
                 p.getId(), p.getName(), p.getSku(), p.getBarcode(), p.getDescription(), p.getImageUrl(),
                 p.getCategory() != null ? p.getCategory().getId() : null,
                 p.getCategory() != null ? p.getCategory().getName() : null,
                 p.getPrice(), p.getTaxAmount(), p.getDiscountTitle(), p.getDiscountAmount(), p.getStatus(),
-                p.getAvailableQty(), p.getQuantitySold(), p.getTotalQty(), groups);
+                p.getAvailableQty(), p.getQuantitySold(), p.getTotalQty(), labels);
     }
 
-    private static GroupResponse toGroup(ModifierGroup g) {
-        List<OptionResponse> opts = g.getOptions().stream()
-                .map(o -> new OptionResponse(o.getId(), o.getName(), o.getPriceDelta(), o.isDefault(), o.getSortOrder()))
-                .toList();
-        return new GroupResponse(g.getId(), g.getName(), g.isRequired(), g.getMinSelect(), g.getMaxSelect(),
-                g.getSortOrder(), opts);
+    private static AttachedLabelResponse toLabel(ProductLabel l) {
+        return new AttachedLabelResponse(l.getId(), l.getLabelId(), l.getLabelName(), l.getLabelType(),
+                List.copyOf(l.getValues()));
     }
 }

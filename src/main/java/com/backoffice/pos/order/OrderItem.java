@@ -1,22 +1,18 @@
 package com.backoffice.pos.order;
 
 import com.backoffice.pos.common.BaseEntity;
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
 
-/** A single line in an order (a product, at a seat, with modifier snapshots). */
+/** A single line in an order (a product, at a seat). */
 @Entity
 @Table(name = "order_items")
 @Getter
@@ -53,12 +49,4 @@ public class OrderItem extends BaseEntity {
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
-
-    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderItemModifier> modifiers = new ArrayList<>();
-
-    public void addModifier(OrderItemModifier modifier) {
-        modifier.setOrderItem(this);
-        modifiers.add(modifier);
-    }
 }

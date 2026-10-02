@@ -46,6 +46,10 @@ public class ServiceItem extends TenantEntity {
     @OrderBy("sortOrder ASC")
     private List<ServiceProduct> products = new ArrayList<>();
 
+    @OneToMany(mappedBy = "service", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<ServiceItemLabel> labels = new ArrayList<>();
+
     public void addProduct(ServiceProduct sp) {
         sp.setService(this);
         products.add(sp);
@@ -53,5 +57,14 @@ public class ServiceItem extends TenantEntity {
 
     public void clearProducts() {
         products.clear();
+    }
+
+    public void addLabel(ServiceItemLabel label) {
+        label.setService(this);
+        labels.add(label);
+    }
+
+    public void clearLabels() {
+        labels.clear();
     }
 }
