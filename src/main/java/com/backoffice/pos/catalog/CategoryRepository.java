@@ -20,4 +20,15 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     boolean existsByBusinessIdAndName(Long businessId, String name);
 
     long countByBusinessId(Long businessId);
+
+    // --- store-scoped (catalog is per store) ---
+    Page<Category> findByStoreId(Long storeId, Pageable pageable);
+
+    Page<Category> findByStoreIdAndNameContainingIgnoreCase(Long storeId, String name, Pageable pageable);
+
+    List<Category> findByStoreIdOrderByNameAsc(Long storeId);
+
+    Optional<Category> findByIdAndStoreId(Long id, Long storeId);
+
+    boolean existsByStoreIdAndName(Long storeId, String name);
 }

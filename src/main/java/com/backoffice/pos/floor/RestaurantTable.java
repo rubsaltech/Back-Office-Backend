@@ -1,6 +1,6 @@
 package com.backoffice.pos.floor;
 
-import com.backoffice.pos.common.TenantEntity;
+import com.backoffice.pos.common.StoreScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,7 +16,7 @@ import lombok.Setter;
 @Table(name = "restaurant_tables")
 @Getter
 @Setter
-public class RestaurantTable extends TenantEntity {
+public class RestaurantTable extends StoreScopedEntity {
 
     @Column(nullable = false)
     private String name;

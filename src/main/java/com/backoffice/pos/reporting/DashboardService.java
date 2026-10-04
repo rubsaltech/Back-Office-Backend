@@ -5,7 +5,7 @@ import com.backoffice.pos.catalog.ProductRepository;
 import com.backoffice.pos.reporting.DashboardSummary.EmployeeOverview;
 import com.backoffice.pos.reporting.DashboardSummary.TopProduct;
 import com.backoffice.pos.staff.EmployeeRepository;
-import com.backoffice.pos.tenancy.TenantContext;
+import com.backoffice.pos.store.StoreResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,30 +16,32 @@ public class DashboardService {
 
     private final ProductRepository products;
     private final EmployeeRepository employees;
+    private final StoreResolver storeResolver;
 
-    public DashboardService(ProductRepository products, EmployeeRepository employees) {
+    public DashboardService(ProductRepository products, EmployeeRepository employees, StoreResolver storeResolver) {
         this.products = products;
         this.employees = employees;
+        this.storeResolver = storeResolver;
     }
 
     @Transactional(readOnly = true)
     public DashboardSummary summary() {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
 
-        List<TopProduct> top = products.findTop7ByBusinessIdOrderByQuantitySoldDesc(businessId).stream()
+        List<TopProduct> top = products.findTop7ByStoreIdOrderByQuantitySoldDesc(storeId).stream()
                 .map(p -> new TopProduct(p.getName(), p.getQuantitySold()))
                 .toList();
 
-        List<EmployeeOverview> overview = employees.findTop6ByBusinessIdOrderBySalesTotalDesc(businessId).stream()
+        List<EmployeeOverview> overview = employees.findTop6ByStore_IdOrderBySalesTotalDesc(storeId).stream()
                 .map(e -> new EmployeeOverview(String.valueOf(e.getId()), e.getFullName(), e.getEmail(),
                         e.getSalesTotal(), e.getTipsTotal()))
                 .toList();
 
         return new DashboardSummary(
-                products.countByBusinessId(businessId),
-                products.countByBusinessIdAndStatus(businessId, CatalogStatus.ACTIVE),
-                products.sumQuantitySold(businessId),
-                employees.countByBusinessId(businessId),
+                products.countByStoreId(storeId),
+                products.countByStoreIdAndStatus(storeId, CatalogStatus.ACTIVE),
+                products.sumQuantitySoldByStore(storeId),
+                employees.countByStore_Id(storeId),
                 top,
                 overview
         );

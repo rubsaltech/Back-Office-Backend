@@ -1,6 +1,6 @@
 package com.backoffice.pos.catalog;
 
-import com.backoffice.pos.common.TenantEntity;
+import com.backoffice.pos.common.StoreScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -11,11 +11,11 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "categories",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"business_id", "name"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"store_id", "name"})
 )
 @Getter
 @Setter
-public class Category extends TenantEntity {
+public class Category extends StoreScopedEntity {
 
     @Column(nullable = false)
     private String name;

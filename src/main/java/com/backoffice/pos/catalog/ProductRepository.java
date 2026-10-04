@@ -19,6 +19,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsByBusinessIdAndSku(Long businessId, String sku);
 
+    // --- store-scoped (catalog is per store) ---
+    Page<Product> findByStoreId(Long storeId, Pageable pageable);
+
+    Page<Product> findByStoreIdAndNameContainingIgnoreCase(Long storeId, String name, Pageable pageable);
+
+    Optional<Product> findByIdAndStoreId(Long id, Long storeId);
+
+    boolean existsByStoreIdAndSku(Long storeId, String sku);
+
     long countByBusinessId(Long businessId);
 
     long countByBusinessIdAndStatus(Long businessId, CatalogStatus status);
@@ -29,4 +38,14 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     long sumQuantitySold(@Param("businessId") Long businessId);
 
     List<Product> findTop7ByBusinessIdOrderByQuantitySoldDesc(Long businessId);
+
+    // --- store-scoped dashboard aggregates ---
+    long countByStoreId(Long storeId);
+
+    long countByStoreIdAndStatus(Long storeId, CatalogStatus status);
+
+    @Query("select coalesce(sum(p.quantitySold), 0) from Product p where p.storeId = :storeId")
+    long sumQuantitySoldByStore(@Param("storeId") Long storeId);
+
+    List<Product> findTop7ByStoreIdOrderByQuantitySoldDesc(Long storeId);
 }

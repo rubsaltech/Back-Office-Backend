@@ -8,6 +8,7 @@ import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
 import com.backoffice.pos.label.LabelAttachments;
+import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,20 +34,22 @@ public class ProductService {
     private final ProductRepository products;
     private final CategoryRepository categories;
     private final LabelAttachments labelAttachments;
+    private final StoreResolver storeResolver;
 
     public ProductService(ProductRepository products, CategoryRepository categories,
-                          LabelAttachments labelAttachments) {
+                          LabelAttachments labelAttachments, StoreResolver storeResolver) {
         this.products = products;
         this.categories = categories;
         this.labelAttachments = labelAttachments;
+        this.storeResolver = storeResolver;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> list(String query, Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<Product> page = StringUtils.hasText(query)
-                ? products.findByBusinessIdAndNameContainingIgnoreCase(businessId, query, pageable)
-                : products.findByBusinessId(businessId, pageable);
+                ? products.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable)
+                : products.findByStoreId(storeId, pageable);
         return PageResponse.of(page, ProductResponse::from);
     }
 
@@ -58,11 +61,13 @@ public class ProductService {
     @Transactional
     public ProductResponse create(ProductRequest req) {
         Long businessId = TenantContext.requireBusinessId();
-        if (products.existsByBusinessIdAndSku(businessId, req.sku())) {
-            throw new ConflictException("Product SKU already exists: " + req.sku());
+        Long storeId = storeResolver.currentStoreId();
+        if (products.existsByStoreIdAndSku(storeId, req.sku())) {
+            throw new ConflictException("Product SKU already exists in this store: " + req.sku());
         }
         Product p = new Product();
         p.setBusinessId(businessId);
+        p.setStoreId(storeId);
         apply(p, req);
         return ProductResponse.from(products.save(p));
     }
@@ -82,7 +87,8 @@ public class ProductService {
     @Transactional
     public ImportResult importCsv(MultipartFile file) {
         Long businessId = TenantContext.requireBusinessId();
-        Map<String, Category> byName = categories.findByBusinessIdOrderByNameAsc(businessId).stream()
+        Long storeId = storeResolver.currentStoreId();
+        Map<String, Category> byName = categories.findByStoreIdOrderByNameAsc(storeId).stream()
                 .collect(Collectors.toMap(c -> c.getName().toLowerCase(), Function.identity(), (a, b) -> a));
 
         int imported = 0;
@@ -106,12 +112,13 @@ public class ProductService {
                         skipped++;
                         continue;
                     }
-                    if (products.existsByBusinessIdAndSku(businessId, sku)) {
+                    if (products.existsByStoreIdAndSku(storeId, sku)) {
                         skipped++;
                         continue;
                     }
                     Product p = new Product();
                     p.setBusinessId(businessId);
+                    p.setStoreId(storeId);
                     p.setName(value(c, 0));
                     p.setSku(sku);
                     p.setBarcode(value(c, 2));
@@ -136,7 +143,7 @@ public class ProductService {
     // ---- helpers ----
 
     private Product load(Long id) {
-        return products.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return products.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Product", id));
     }
 
@@ -147,8 +154,9 @@ public class ProductService {
         p.setBarcode(req.barcode());
         p.setDescription(req.description());
         p.setImageUrl(req.imageUrl());
+        // Category must belong to the same store as the product.
         p.setCategory(req.categoryId() == null ? null
-                : categories.findByIdAndBusinessId(req.categoryId(), businessId)
+                : categories.findByIdAndStoreId(req.categoryId(), p.getStoreId())
                 .orElseThrow(() -> NotFoundException.of("Category", req.categoryId())));
         p.setPrice(nvl(req.price()));
         p.setPurchasedPrice(nvl(req.purchasedPrice()));

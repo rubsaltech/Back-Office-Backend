@@ -17,4 +17,13 @@ public interface TableRepository extends JpaRepository<RestaurantTable, Long> {
     Optional<RestaurantTable> findByIdAndBusinessId(Long id, Long businessId);
 
     long countByFloor_Id(Long floorId);
+
+    // --- store-scoped ---
+    Page<RestaurantTable> findByStoreId(Long storeId, Pageable pageable);
+
+    Page<RestaurantTable> findByStoreIdAndFloor_Id(Long storeId, Long floorId, Pageable pageable);
+
+    Page<RestaurantTable> findByStoreIdAndNameContainingIgnoreCase(Long storeId, String name, Pageable pageable);
+
+    Optional<RestaurantTable> findByIdAndStoreId(Long id, Long storeId);
 }

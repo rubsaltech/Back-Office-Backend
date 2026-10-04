@@ -7,6 +7,7 @@ import com.backoffice.pos.floor.dto.FloorDtos.FloorRequest;
 import com.backoffice.pos.floor.dto.FloorDtos.FloorResponse;
 import com.backoffice.pos.floor.dto.FloorDtos.TableRequest;
 import com.backoffice.pos.floor.dto.FloorDtos.TableResponse;
+import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,28 +22,32 @@ public class FloorPlanService {
 
     private final FloorRepository floors;
     private final TableRepository tables;
+    private final StoreResolver storeResolver;
 
-    public FloorPlanService(FloorRepository floors, TableRepository tables) {
+    public FloorPlanService(FloorRepository floors, TableRepository tables, StoreResolver storeResolver) {
         this.floors = floors;
         this.tables = tables;
+        this.storeResolver = storeResolver;
     }
 
     // ---- Floors ----
 
     @Transactional(readOnly = true)
     public List<FloorResponse> listFloors() {
-        return floors.findByBusinessIdOrderByNameAsc(TenantContext.requireBusinessId())
+        return floors.findByStoreIdOrderByNameAsc(storeResolver.currentStoreId())
                 .stream().map(f -> FloorResponse.from(f, tables.countByFloor_Id(f.getId()))).toList();
     }
 
     @Transactional
     public FloorResponse createFloor(FloorRequest req) {
         Long businessId = TenantContext.requireBusinessId();
-        if (floors.existsByBusinessIdAndName(businessId, req.name())) {
-            throw new ConflictException("Floor already exists: " + req.name());
+        Long storeId = storeResolver.currentStoreId();
+        if (floors.existsByStoreIdAndName(storeId, req.name())) {
+            throw new ConflictException("Floor already exists in this store: " + req.name());
         }
         Floor f = new Floor();
         f.setBusinessId(businessId);
+        f.setStoreId(storeId);
         f.setName(req.name());
         return FloorResponse.from(floors.save(f), 0);
     }
@@ -63,14 +68,14 @@ public class FloorPlanService {
 
     @Transactional(readOnly = true)
     public PageResponse<TableResponse> listTables(String query, Long floorId, Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<RestaurantTable> page;
         if (floorId != null) {
-            page = tables.findByBusinessIdAndFloor_Id(businessId, floorId, pageable);
+            page = tables.findByStoreIdAndFloor_Id(storeId, floorId, pageable);
         } else if (StringUtils.hasText(query)) {
-            page = tables.findByBusinessIdAndNameContainingIgnoreCase(businessId, query, pageable);
+            page = tables.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable);
         } else {
-            page = tables.findByBusinessId(businessId, pageable);
+            page = tables.findByStoreId(storeId, pageable);
         }
         return PageResponse.of(page, TableResponse::from);
     }
@@ -79,6 +84,7 @@ public class FloorPlanService {
     public TableResponse createTable(TableRequest req) {
         RestaurantTable t = new RestaurantTable();
         t.setBusinessId(TenantContext.requireBusinessId());
+        t.setStoreId(storeResolver.currentStoreId());
         applyTable(t, req);
         return TableResponse.from(tables.save(t));
     }
@@ -98,12 +104,12 @@ public class FloorPlanService {
     // ---- helpers ----
 
     private Floor loadFloor(Long id) {
-        return floors.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return floors.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Floor", id));
     }
 
     private RestaurantTable loadTable(Long id) {
-        return tables.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return tables.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Table", id));
     }
 
@@ -113,8 +119,9 @@ public class FloorPlanService {
         if (req.status() != null) {
             t.setStatus(req.status());
         }
+        // A table's floor must belong to the same store.
         t.setFloor(req.floorId() == null ? null
-                : floors.findByIdAndBusinessId(req.floorId(), TenantContext.requireBusinessId())
+                : floors.findByIdAndStoreId(req.floorId(), t.getStoreId())
                 .orElseThrow(() -> NotFoundException.of("Floor", req.floorId())));
     }
 }

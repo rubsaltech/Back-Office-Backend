@@ -4,7 +4,7 @@ import com.backoffice.pos.catalog.dto.InventoryAdjustRequest;
 import com.backoffice.pos.catalog.dto.InventoryResponse;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
-import com.backoffice.pos.tenancy.TenantContext;
+import com.backoffice.pos.store.StoreResolver;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,9 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InventoryController {
 
     private final ProductRepository products;
+    private final StoreResolver storeResolver;
 
-    public InventoryController(ProductRepository products) {
+    public InventoryController(ProductRepository products, StoreResolver storeResolver) {
         this.products = products;
+        this.storeResolver = storeResolver;
     }
 
     @GetMapping
@@ -36,10 +38,10 @@ public class InventoryController {
     public PageResponse<InventoryResponse> list(
             @RequestParam(required = false) String query,
             @PageableDefault(size = 10, sort = "name") Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<Product> page = StringUtils.hasText(query)
-                ? products.findByBusinessIdAndNameContainingIgnoreCase(businessId, query, pageable)
-                : products.findByBusinessId(businessId, pageable);
+                ? products.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable)
+                : products.findByStoreId(storeId, pageable);
         return PageResponse.of(page, InventoryResponse::from);
     }
 
@@ -47,7 +49,7 @@ public class InventoryController {
     @PreAuthorize("hasAuthority('inventory.edit')")
     @Transactional
     public InventoryResponse adjust(@PathVariable Long productId, @Valid @RequestBody InventoryAdjustRequest req) {
-        Product p = products.findByIdAndBusinessId(productId, TenantContext.requireBusinessId())
+        Product p = products.findByIdAndStoreId(productId, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Product", productId));
         if (req.availableQty() != null) {
             p.setAvailableQty(req.availableQty());

@@ -5,6 +5,7 @@ import com.backoffice.pos.catalog.dto.CategoryResponse;
 import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
+import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,35 +20,39 @@ public class CategoryService {
 
     private final CategoryRepository categories;
     private final ProductRepository products;
+    private final StoreResolver storeResolver;
 
-    public CategoryService(CategoryRepository categories, ProductRepository products) {
+    public CategoryService(CategoryRepository categories, ProductRepository products, StoreResolver storeResolver) {
         this.categories = categories;
         this.products = products;
+        this.storeResolver = storeResolver;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<CategoryResponse> list(String query, Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<Category> page = StringUtils.hasText(query)
-                ? categories.findByBusinessIdAndNameContainingIgnoreCase(businessId, query, pageable)
-                : categories.findByBusinessId(businessId, pageable);
+                ? categories.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable)
+                : categories.findByStoreId(storeId, pageable);
         return PageResponse.of(page, c -> CategoryResponse.from(c, products.countByCategory_Id(c.getId())));
     }
 
     @Transactional(readOnly = true)
     public List<CategoryResponse> all() {
-        return categories.findByBusinessIdOrderByNameAsc(TenantContext.requireBusinessId())
+        return categories.findByStoreIdOrderByNameAsc(storeResolver.currentStoreId())
                 .stream().map(c -> CategoryResponse.from(c, products.countByCategory_Id(c.getId()))).toList();
     }
 
     @Transactional
     public CategoryResponse create(CategoryRequest req) {
         Long businessId = TenantContext.requireBusinessId();
-        if (categories.existsByBusinessIdAndName(businessId, req.name())) {
-            throw new ConflictException("Category already exists: " + req.name());
+        Long storeId = storeResolver.currentStoreId();
+        if (categories.existsByStoreIdAndName(storeId, req.name())) {
+            throw new ConflictException("Category already exists in this store: " + req.name());
         }
         Category c = new Category();
         c.setBusinessId(businessId);
+        c.setStoreId(storeId);
         apply(c, req);
         return CategoryResponse.from(categories.save(c), 0);
     }
@@ -65,7 +70,7 @@ public class CategoryService {
     }
 
     private Category load(Long id) {
-        return categories.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return categories.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Category", id));
     }
 

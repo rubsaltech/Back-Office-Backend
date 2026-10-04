@@ -7,6 +7,7 @@ import com.backoffice.pos.common.web.PageResponse;
 import com.backoffice.pos.label.LabelAttachments;
 import com.backoffice.pos.servicecatalog.dto.ServiceItemRequest;
 import com.backoffice.pos.servicecatalog.dto.ServiceItemResponse;
+import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,20 +23,22 @@ public class ServiceItemService {
     private final ServiceItemRepository services;
     private final ProductRepository products;
     private final LabelAttachments labelAttachments;
+    private final StoreResolver storeResolver;
 
     public ServiceItemService(ServiceItemRepository services, ProductRepository products,
-                              LabelAttachments labelAttachments) {
+                              LabelAttachments labelAttachments, StoreResolver storeResolver) {
         this.services = services;
         this.products = products;
         this.labelAttachments = labelAttachments;
+        this.storeResolver = storeResolver;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<ServiceItemResponse> list(String query, Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<ServiceItem> page = StringUtils.hasText(query)
-                ? services.findByBusinessIdAndNameContainingIgnoreCase(businessId, query, pageable)
-                : services.findByBusinessId(businessId, pageable);
+                ? services.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable)
+                : services.findByStoreId(storeId, pageable);
         return PageResponse.of(page, ServiceItemResponse::from);
     }
 
@@ -48,6 +51,7 @@ public class ServiceItemService {
     public ServiceItemResponse create(ServiceItemRequest req) {
         ServiceItem s = new ServiceItem();
         s.setBusinessId(TenantContext.requireBusinessId());
+        s.setStoreId(storeResolver.currentStoreId());
         apply(s, req);
         return ServiceItemResponse.from(services.save(s));
     }
@@ -67,7 +71,7 @@ public class ServiceItemService {
     // ---- helpers ----
 
     private ServiceItem load(Long id) {
-        return services.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return services.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Service", id));
     }
 
@@ -79,7 +83,7 @@ public class ServiceItemService {
         if (req.status() != null) {
             s.setStatus(req.status());
         }
-        rebuildProducts(s, req, businessId);
+        rebuildProducts(s, req, s.getStoreId());
         rebuildLabels(s, req, businessId);
     }
 
@@ -96,7 +100,7 @@ public class ServiceItemService {
         }
     }
 
-    private void rebuildProducts(ServiceItem s, ServiceItemRequest req, Long businessId) {
+    private void rebuildProducts(ServiceItem s, ServiceItemRequest req, Long storeId) {
         s.clearProducts();
         if (req.products() == null) {
             return;
@@ -106,7 +110,8 @@ public class ServiceItemService {
             if (line == null || line.productId() == null) {
                 continue;
             }
-            Product product = products.findByIdAndBusinessId(line.productId(), businessId)
+            // A service can only link products from its own store.
+            Product product = products.findByIdAndStoreId(line.productId(), storeId)
                     .orElseThrow(() -> NotFoundException.of("Product", line.productId()));
             ServiceProduct sp = new ServiceProduct();
             sp.setProduct(product);

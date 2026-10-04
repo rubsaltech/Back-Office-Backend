@@ -11,6 +11,7 @@ import com.backoffice.pos.order.dto.OrderDtos.OrderSummary;
 import com.backoffice.pos.order.dto.OrderRequest;
 import com.backoffice.pos.order.dto.OrderResponse;
 import com.backoffice.pos.security.CurrentUser;
+import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,21 +32,23 @@ public class OrderService {
     private final ProductRepository products;
     private final TableRepository tables;
     private final PaymentDeviceRepository devices;
+    private final StoreResolver storeResolver;
 
     public OrderService(OrderRepository orders, ProductRepository products, TableRepository tables,
-                        PaymentDeviceRepository devices) {
+                        PaymentDeviceRepository devices, StoreResolver storeResolver) {
         this.orders = orders;
         this.products = products;
         this.tables = tables;
         this.devices = devices;
+        this.storeResolver = storeResolver;
     }
 
     @Transactional(readOnly = true)
     public PageResponse<OrderSummary> list(OrderStatus status, Pageable pageable) {
-        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
         Page<Order> page = status != null
-                ? orders.findByBusinessIdAndStatus(businessId, status, pageable)
-                : orders.findByBusinessId(businessId, pageable);
+                ? orders.findByStoreIdAndStatus(storeId, status, pageable)
+                : orders.findByStoreId(storeId, pageable);
         return PageResponse.of(page, OrderSummary::from);
     }
 
@@ -57,9 +60,11 @@ public class OrderService {
     @Transactional
     public OrderResponse create(OrderRequest req) {
         Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
 
         Order order = new Order();
         order.setBusinessId(businessId);
+        order.setStoreId(storeId);
         order.setOrderNumber(nextOrderNumber(businessId));
         order.setType(req.type());
         order.setStatus(OrderStatus.CONFIRMED);
@@ -72,7 +77,7 @@ public class OrderService {
         // The store's vertical decides which the POS collects — the backend just
         // records what it is given.
         if (req.tableId() != null) {
-            RestaurantTable table = tables.findByIdAndBusinessId(req.tableId(), businessId)
+            RestaurantTable table = tables.findByIdAndStoreId(req.tableId(), storeId)
                     .orElseThrow(() -> NotFoundException.of("Table", req.tableId()));
             order.setTableId(table.getId());
             order.setTableName(table.getName());
@@ -84,9 +89,9 @@ public class OrderService {
             order.setCustomerAddress(req.customerAddress());
         }
 
-        buildItems(order, req, businessId);
+        buildItems(order, req, storeId);
         applyTotals(order, req);
-        attachPayment(order, req, businessId);
+        attachPayment(order, req, storeId);
 
         return OrderResponse.from(orders.save(order));
     }
@@ -111,7 +116,7 @@ public class OrderService {
     // ---- helpers ----
 
     private Order load(Long id) {
-        return orders.findByIdAndBusinessId(id, TenantContext.requireBusinessId())
+        return orders.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Order", id));
     }
 
@@ -121,13 +126,13 @@ public class OrderService {
                 .orElse(ORDER_NUMBER_BASE + 1);
     }
 
-    private void buildItems(Order order, OrderRequest req, Long businessId) {
+    private void buildItems(Order order, OrderRequest req, Long storeId) {
         int sort = 0;
         for (OrderRequest.Line line : req.items()) {
             if (line == null || line.productId() == null) {
                 continue;
             }
-            Product product = products.findByIdAndBusinessId(line.productId(), businessId)
+            Product product = products.findByIdAndStoreId(line.productId(), storeId)
                     .orElseThrow(() -> NotFoundException.of("Product", line.productId()));
 
             int qty = line.quantity() == null || line.quantity() < 1 ? 1 : line.quantity();
@@ -179,7 +184,7 @@ public class OrderService {
         order.setTotal(subtotal.add(taxTotal).subtract(discountTotal));
     }
 
-    private void attachPayment(Order order, OrderRequest req, Long businessId) {
+    private void attachPayment(Order order, OrderRequest req, Long storeId) {
         OrderRequest.Payment p = req.payment();
         if (p == null || p.method() == null) {
             return;
@@ -189,7 +194,7 @@ public class OrderService {
         payment.setAmount(order.getTotal());
         payment.setStatus(p.method() == PaymentMethod.COD ? PaymentStatus.PENDING : PaymentStatus.SUCCESSFUL);
         if (p.method() == PaymentMethod.CARD && p.deviceId() != null) {
-            PaymentDevice device = devices.findByIdAndBusinessId(p.deviceId(), businessId)
+            PaymentDevice device = devices.findByIdAndStoreId(p.deviceId(), storeId)
                     .orElseThrow(() -> NotFoundException.of("Payment device", p.deviceId()));
             payment.setDeviceId(device.getId());
             payment.setDeviceSerial(device.getSerialNumber());

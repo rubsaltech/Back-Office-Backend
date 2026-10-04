@@ -1,7 +1,7 @@
 package com.backoffice.pos.servicecatalog;
 
 import com.backoffice.pos.catalog.CatalogStatus;
-import com.backoffice.pos.common.TenantEntity;
+import com.backoffice.pos.common.StoreScopedEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +25,7 @@ import java.util.List;
 @Table(name = "services")
 @Getter
 @Setter
-public class ServiceItem extends TenantEntity {
+public class ServiceItem extends StoreScopedEntity {
 
     @Column(nullable = false)
     private String name;

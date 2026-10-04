@@ -1,5 +1,6 @@
 package com.backoffice.pos.security;
 
+import com.backoffice.pos.tenancy.StoreContext;
 import com.backoffice.pos.tenancy.TenantContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -51,10 +52,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
+        // Active store (optional) — the UI sends it per request; it is validated
+        // against the caller's business wherever a store-scoped query uses it.
+        Long storeId = parseStoreId(request.getHeader("X-Store-Id"));
+        if (storeId != null) {
+            StoreContext.setStoreId(storeId);
+        }
+
         try {
             filterChain.doFilter(request, response);
         } finally {
             TenantContext.clear();
+            StoreContext.clear();
+        }
+    }
+
+    private static Long parseStoreId(String header) {
+        if (header == null || header.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(header.trim());
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 }

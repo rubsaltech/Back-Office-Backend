@@ -26,4 +26,9 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     long countByBusinessId(Long businessId);
 
     List<Employee> findTop6ByBusinessIdOrderBySalesTotalDesc(Long businessId);
+
+    // --- store-scoped ---
+    long countByStore_Id(Long storeId);
+
+    List<Employee> findTop6ByStore_IdOrderBySalesTotalDesc(Long storeId);
 }

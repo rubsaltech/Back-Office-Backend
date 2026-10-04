@@ -1,6 +1,6 @@
 package com.backoffice.pos.catalog;
 
-import com.backoffice.pos.common.TenantEntity;
+import com.backoffice.pos.common.StoreScopedEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,11 +21,11 @@ import java.util.List;
 @Entity
 @Table(
         name = "products",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"business_id", "sku"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"store_id", "sku"})
 )
 @Getter
 @Setter
-public class Product extends TenantEntity {
+public class Product extends StoreScopedEntity {
 
     @Column(nullable = false)
     private String name;

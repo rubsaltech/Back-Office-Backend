@@ -12,4 +12,9 @@ public interface PaymentDeviceRepository extends JpaRepository<PaymentDevice, Lo
     Optional<PaymentDevice> findByIdAndBusinessId(Long id, Long businessId);
 
     boolean existsByBusinessIdAndSerialNumber(Long businessId, String serialNumber);
+
+    // --- store-scoped ---
+    List<PaymentDevice> findByStoreIdOrderByCreatedAtAsc(Long storeId);
+
+    Optional<PaymentDevice> findByIdAndStoreId(Long id, Long storeId);
 }

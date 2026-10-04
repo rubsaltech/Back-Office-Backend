@@ -16,6 +16,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByBusinessId(Long businessId);
 
+    // --- store-scoped ---
+    Page<Order> findByStoreId(Long storeId, Pageable pageable);
+
+    Page<Order> findByStoreIdAndStatus(Long storeId, OrderStatus status, Pageable pageable);
+
+    Optional<Order> findByIdAndStoreId(Long id, Long storeId);
+
     /** Highest order number issued for a business (for the next running number). */
     Optional<Order> findTopByBusinessIdOrderByOrderNumberDesc(Long businessId);
 }
