@@ -2,6 +2,13 @@ spring:
   application:
     name: pos
 
+  # Allow callers to request the whole catalogue in one page (the POS loads all
+  # products at once). Without this, Spring clamps page size to 2000.
+  data:
+    web:
+      pageable:
+        max-page-size: 2147483647
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/rubsal_pos}
     username: ${DB_USER:rubsal}

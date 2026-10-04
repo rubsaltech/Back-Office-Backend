@@ -4,8 +4,6 @@ import com.backoffice.pos.catalog.CatalogStatus;
 import com.backoffice.pos.common.TenantEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
@@ -29,7 +27,6 @@ public class PaymentDevice extends TenantEntity {
 
     private String label;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 }

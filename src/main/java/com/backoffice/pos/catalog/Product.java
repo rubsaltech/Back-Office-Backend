@@ -4,8 +4,6 @@ import com.backoffice.pos.common.TenantEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -50,6 +48,10 @@ public class Product extends TenantEntity {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
 
+    /** What the business paid for the item (cost); {@link #price} is the sell price. */
+    @Column(name = "purchased_price", nullable = false, precision = 12, scale = 2)
+    private BigDecimal purchasedPrice = BigDecimal.ZERO;
+
     @Column(name = "tax_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
@@ -59,7 +61,6 @@ public class Product extends TenantEntity {
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 

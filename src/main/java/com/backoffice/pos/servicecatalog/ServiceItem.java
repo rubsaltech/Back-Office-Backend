@@ -5,8 +5,6 @@ import com.backoffice.pos.common.TenantEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -38,7 +36,6 @@ public class ServiceItem extends TenantEntity {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 

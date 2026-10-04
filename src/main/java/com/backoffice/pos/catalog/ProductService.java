@@ -151,6 +151,7 @@ public class ProductService {
                 : categories.findByIdAndBusinessId(req.categoryId(), businessId)
                 .orElseThrow(() -> NotFoundException.of("Category", req.categoryId())));
         p.setPrice(nvl(req.price()));
+        p.setPurchasedPrice(nvl(req.purchasedPrice()));
         p.setTaxAmount(nvl(req.taxAmount()));
         p.setDiscountTitle(req.discountTitle());
         p.setDiscountAmount(nvl(req.discountAmount()));

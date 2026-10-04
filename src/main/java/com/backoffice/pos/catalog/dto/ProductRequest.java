@@ -15,6 +15,7 @@ public record ProductRequest(
         String imageUrl,
         Long categoryId,
         BigDecimal price,
+        BigDecimal purchasedPrice,
         BigDecimal taxAmount,
         String discountTitle,
         BigDecimal discountAmount,

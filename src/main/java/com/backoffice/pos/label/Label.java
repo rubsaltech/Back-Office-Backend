@@ -43,7 +43,6 @@ public class Label extends TenantEntity {
     @Column(nullable = false)
     private boolean required = false;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 

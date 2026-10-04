@@ -18,6 +18,7 @@ public record ProductResponse(
         Long categoryId,
         String categoryName,
         BigDecimal price,
+        BigDecimal purchasedPrice,
         BigDecimal taxAmount,
         String discountTitle,
         BigDecimal discountAmount,
@@ -35,7 +36,7 @@ public record ProductResponse(
                 p.getId(), p.getName(), p.getSku(), p.getBarcode(), p.getDescription(), p.getImageUrl(),
                 p.getCategory() != null ? p.getCategory().getId() : null,
                 p.getCategory() != null ? p.getCategory().getName() : null,
-                p.getPrice(), p.getTaxAmount(), p.getDiscountTitle(), p.getDiscountAmount(), p.getStatus(),
+                p.getPrice(), p.getPurchasedPrice(), p.getTaxAmount(), p.getDiscountTitle(), p.getDiscountAmount(), p.getStatus(),
                 p.getAvailableQty(), p.getQuantitySold(), p.getTotalQty(), labels);
     }
 
