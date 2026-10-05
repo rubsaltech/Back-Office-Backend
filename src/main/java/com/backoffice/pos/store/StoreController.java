@@ -27,14 +27,18 @@ public class StoreController {
         this.service = service;
     }
 
+    /**
+     * Lists the stores the caller may operate in (employees: their assigned
+     * stores; owners: all). Open to any authenticated user — every employee needs
+     * this to pick/switch their active store. The {@code store.*} permissions gate
+     * store MANAGEMENT (create/edit/delete), not this basic listing.
+     */
     @GetMapping
-    @PreAuthorize("hasAuthority('store.view')")
     public List<StoreResponse> list() {
         return service.list();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('store.view')")
     public StoreResponse get(@PathVariable Long id) {
         return service.get(id);
     }
