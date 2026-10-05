@@ -1,15 +1,21 @@
 package com.backoffice.pos.store;
 
+import com.backoffice.pos.auth.PrincipalType;
 import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.order.PaymentDevice;
 import com.backoffice.pos.order.PaymentDeviceRepository;
+import com.backoffice.pos.security.AuthPrincipal;
+import com.backoffice.pos.security.CurrentUser;
+import com.backoffice.pos.staff.Employee;
+import com.backoffice.pos.staff.EmployeeRepository;
 import com.backoffice.pos.store.dto.StoreRequest;
 import com.backoffice.pos.store.dto.StoreResponse;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -17,15 +23,28 @@ public class StoreService {
 
     private final StoreRepository stores;
     private final PaymentDeviceRepository paymentDevices;
+    private final EmployeeRepository employees;
 
-    public StoreService(StoreRepository stores, PaymentDeviceRepository paymentDevices) {
+    public StoreService(StoreRepository stores, PaymentDeviceRepository paymentDevices,
+                        EmployeeRepository employees) {
         this.stores = stores;
         this.paymentDevices = paymentDevices;
+        this.employees = employees;
     }
 
     @Transactional(readOnly = true)
     public List<StoreResponse> list() {
-        return stores.findByBusinessIdOrderByCreatedAtAsc(TenantContext.requireBusinessId())
+        Long businessId = TenantContext.requireBusinessId();
+        AuthPrincipal principal = CurrentUser.get();
+        // Employees only see the stores they are assigned to; owners see all.
+        if (principal.type() == PrincipalType.EMPLOYEE) {
+            Employee employee = employees.findByIdAndBusinessId(principal.id(), businessId)
+                    .orElseThrow(() -> NotFoundException.of("Employee", principal.id()));
+            return employee.getStores().stream()
+                    .sorted(Comparator.comparing(Store::getId))
+                    .map(StoreResponse::from).toList();
+        }
+        return stores.findByBusinessIdOrderByCreatedAtAsc(businessId)
                 .stream().map(StoreResponse::from).toList();
     }
 

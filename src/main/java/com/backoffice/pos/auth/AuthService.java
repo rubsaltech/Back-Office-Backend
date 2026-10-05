@@ -77,18 +77,36 @@ public class AuthService {
 
     @Transactional
     public TokenResponse login(LoginRequest req) {
-        Business business = businesses.findByEmailIgnoreCase(req.email())
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
-        if (!passwordEncoder.matches(req.password(), business.getPasswordHash())) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+        // The email identifies either a business owner or an employee.
+        Business business = businesses.findByEmailIgnoreCase(req.email()).orElse(null);
+        if (business != null) {
+            if (!passwordEncoder.matches(req.password(), business.getPasswordHash())) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+            }
+            assertBusinessUsable(business);
+            return issueForOwner(business);
         }
+
+        // Employee web login (email + password).
+        Employee employee = employees.findByEmailIgnoreCase(req.email()).stream()
+                .filter(e -> e.getPasswordHash() != null && passwordEncoder.matches(req.password(), e.getPasswordHash()))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        if (employee.getStatus() == com.backoffice.pos.staff.EmployeeStatus.INACTIVE) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "This employee account is inactive");
+        }
+        assertBusinessUsable(businesses.findById(employee.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password")));
+        return issueForEmployee(employee);
+    }
+
+    private void assertBusinessUsable(Business business) {
         if (business.getStatus() == BusinessStatus.BLOCKED) {
             throw new ApiException(HttpStatus.FORBIDDEN, "This business account is blocked");
         }
         if (business.getStatus() == BusinessStatus.DEACTIVATED) {
             throw new ApiException(HttpStatus.FORBIDDEN, "This business account is deactivated");
         }
-        return issueForOwner(business);
     }
 
     @Transactional
@@ -100,13 +118,19 @@ public class AuthService {
                 .filter(e -> e.getPinHash() != null && passwordEncoder.matches(req.pin(), e.getPinHash()))
                 .findFirst()
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid store or PIN"));
+        return issueForEmployee(match);
+    }
 
-        List<String> authorities = match.getRole() == null ? List.of()
-                : match.getRole().getPermissions().stream().map(Permission::getKey).toList();
-
+    private TokenResponse issueForEmployee(Employee employee) {
+        List<String> authorities = employeePermissions(employee);
         AuthPrincipal principal = new AuthPrincipal(
-                match.getId(), PrincipalType.EMPLOYEE, store.getBusinessId(), match.getFullName());
-        return issue(principal, authorities, match.getEmail());
+                employee.getId(), PrincipalType.EMPLOYEE, employee.getBusinessId(), employee.getFullName());
+        return issue(principal, authorities, employee.getEmail());
+    }
+
+    private static List<String> employeePermissions(Employee employee) {
+        return employee.getRole() == null ? List.of()
+                : employee.getRole().getPermissions().stream().map(Permission::getKey).toList();
     }
 
     @Transactional
@@ -127,11 +151,7 @@ public class AuthService {
         }
         Employee employee = employees.findById(stored.getPrincipalId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Account no longer exists"));
-        List<String> authorities = employee.getRole() == null ? List.of()
-                : employee.getRole().getPermissions().stream().map(Permission::getKey).toList();
-        AuthPrincipal principal = new AuthPrincipal(
-                employee.getId(), PrincipalType.EMPLOYEE, employee.getBusinessId(), employee.getFullName());
-        return issue(principal, authorities, employee.getEmail());
+        return issueForEmployee(employee);
     }
 
     @Transactional(readOnly = true)
@@ -140,18 +160,23 @@ public class AuthService {
         if (principal.type() == PrincipalType.BUSINESS_OWNER) {
             Business b = businesses.findById(principal.id())
                     .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Account no longer exists"));
-            return new AuthUserResponse(b.getId(), principal.type(), b.getOwnerName(), b.getEmail(), b.getId());
+            return new AuthUserResponse(b.getId(), principal.type(), b.getOwnerName(), b.getEmail(), b.getId(),
+                    ownerPermissions(b.getId()));
         }
         Employee e = employees.findById(principal.id())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Account no longer exists"));
-        return new AuthUserResponse(e.getId(), principal.type(), e.getFullName(), e.getEmail(), e.getBusinessId());
+        return new AuthUserResponse(e.getId(), principal.type(), e.getFullName(), e.getEmail(), e.getBusinessId(),
+                employeePermissions(e));
+    }
+
+    private List<String> ownerPermissions(Long businessId) {
+        return permissions.findByBusinessIdOrderByKeyAsc(businessId).stream().map(Permission::getKey).toList();
     }
 
     // ---- helpers ----
 
     private TokenResponse issueForOwner(Business business) {
-        List<String> authorities = permissions.findByBusinessIdOrderByKeyAsc(business.getId())
-                .stream().map(Permission::getKey).toList();
+        List<String> authorities = ownerPermissions(business.getId());
         AuthPrincipal principal = new AuthPrincipal(
                 business.getId(), PrincipalType.BUSINESS_OWNER, business.getId(),
                 business.getOwnerName() != null ? business.getOwnerName() : business.getName());
@@ -162,7 +187,7 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(principal, authorities);
         String refreshValue = createRefreshToken(principal);
         AuthUserResponse user = new AuthUserResponse(
-                principal.id(), principal.type(), principal.displayName(), email, principal.businessId());
+                principal.id(), principal.type(), principal.displayName(), email, principal.businessId(), authorities);
         return TokenResponse.bearer(accessToken, refreshValue, jwtProperties.accessTokenTtl().toSeconds(), user);
     }
 

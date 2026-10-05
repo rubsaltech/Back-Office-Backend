@@ -49,6 +49,11 @@ public class EmployeeService {
     @Transactional
     public EmployeeResponse create(EmployeeRequest req) {
         Long businessId = TenantContext.requireBusinessId();
+        if (!StringUtils.hasText(req.password())) {
+            throw new com.backoffice.pos.common.exception.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "A password is required so the employee can log in");
+        }
         if (employees.existsByBusinessIdAndEmailIgnoreCase(businessId, req.email())) {
             throw new ConflictException("An employee with this email already exists");
         }

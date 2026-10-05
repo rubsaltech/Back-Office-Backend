@@ -19,6 +19,9 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     Optional<Employee> findByBusinessIdAndEmailIgnoreCase(Long businessId, String email);
 
+    /** Global lookup for web login (email is the login identifier). */
+    List<Employee> findByEmailIgnoreCase(String email);
+
     boolean existsByBusinessIdAndEmailIgnoreCase(Long businessId, String email);
 
     long countByBusinessId(Long businessId);
