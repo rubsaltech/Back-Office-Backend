@@ -32,7 +32,7 @@ public class DashboardService {
                 .map(p -> new TopProduct(p.getName(), p.getQuantitySold()))
                 .toList();
 
-        List<EmployeeOverview> overview = employees.findTop6ByStore_IdOrderBySalesTotalDesc(storeId).stream()
+        List<EmployeeOverview> overview = employees.findTop6ByStores_IdOrderBySalesTotalDesc(storeId).stream()
                 .map(e -> new EmployeeOverview(String.valueOf(e.getId()), e.getFullName(), e.getEmail(),
                         e.getSalesTotal(), e.getTipsTotal()))
                 .toList();
@@ -41,7 +41,7 @@ public class DashboardService {
                 products.countByStoreId(storeId),
                 products.countByStoreIdAndStatus(storeId, CatalogStatus.ACTIVE),
                 products.sumQuantitySoldByStore(storeId),
-                employees.countByStore_Id(storeId),
+                employees.countByStores_Id(storeId),
                 top,
                 overview
         );

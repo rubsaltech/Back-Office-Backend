@@ -8,6 +8,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -15,6 +17,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * A staff member of a business. Authenticates on the web with email + password,
@@ -41,9 +45,14 @@ public class Employee extends TenantEntity {
     @Column(name = "pin_hash")
     private String pinHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id")
-    private Store store;
+    /** Stores this employee works in (many-to-many). */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "employee_stores",
+            joinColumns = @JoinColumn(name = "employee_id"),
+            inverseJoinColumns = @JoinColumn(name = "store_id")
+    )
+    private Set<Store> stores = new LinkedHashSet<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "role_id")

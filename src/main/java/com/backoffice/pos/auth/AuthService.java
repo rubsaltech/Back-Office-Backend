@@ -96,7 +96,7 @@ public class AuthService {
         Store store = stores.findById(req.storeId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid store or PIN"));
 
-        Employee match = employees.findByStore_Id(store.getId()).stream()
+        Employee match = employees.findByStores_Id(store.getId()).stream()
                 .filter(e -> e.getPinHash() != null && passwordEncoder.matches(req.pin(), e.getPinHash()))
                 .findFirst()
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid store or PIN"));

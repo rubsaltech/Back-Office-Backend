@@ -1,5 +1,6 @@
 package com.backoffice.pos.store;
 
+import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.order.PaymentDevice;
 import com.backoffice.pos.order.PaymentDeviceRepository;
@@ -64,12 +65,32 @@ public class StoreService {
     public StoreResponse update(Long id, StoreRequest req) {
         Store store = load(id);
         apply(store, req);
-        return StoreResponse.from(stores.save(store));
+        Store saved = stores.save(store);
+        // Exactly one store is "main": promoting this one demotes the others.
+        if (saved.isMain()) {
+            stores.findByBusinessIdOrderByCreatedAtAsc(saved.getBusinessId()).stream()
+                    .filter(s -> !s.getId().equals(saved.getId()) && s.isMain())
+                    .forEach(s -> { s.setMain(false); stores.save(s); });
+        }
+        return StoreResponse.from(saved);
     }
 
     @Transactional
     public void delete(Long id) {
-        stores.delete(load(id));
+        Store store = load(id);
+        List<Store> all = stores.findByBusinessIdOrderByCreatedAtAsc(store.getBusinessId());
+        if (all.size() <= 1) {
+            throw new ConflictException("You cannot delete your only store");
+        }
+        boolean wasMain = store.isMain();
+        stores.delete(store);
+        // If the main store was removed, promote the earliest remaining one.
+        if (wasMain) {
+            all.stream().filter(s -> !s.getId().equals(id)).findFirst().ifPresent(s -> {
+                s.setMain(true);
+                stores.save(s);
+            });
+        }
     }
 
     private Store load(Long id) {

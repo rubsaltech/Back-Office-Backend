@@ -21,14 +21,18 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     boolean existsByBusinessIdAndEmailIgnoreCase(Long businessId, String email);
 
-    List<Employee> findByStore_Id(Long storeId);
-
     long countByBusinessId(Long businessId);
 
     List<Employee> findTop6ByBusinessIdOrderBySalesTotalDesc(Long businessId);
 
-    // --- store-scoped ---
-    long countByStore_Id(Long storeId);
+    // --- store-scoped (employees belong to many stores) ---
+    List<Employee> findByStores_Id(Long storeId);
 
-    List<Employee> findTop6ByStore_IdOrderBySalesTotalDesc(Long storeId);
+    Page<Employee> findByStores_Id(Long storeId, Pageable pageable);
+
+    Page<Employee> findByStores_IdAndFullNameContainingIgnoreCase(Long storeId, String name, Pageable pageable);
+
+    long countByStores_Id(Long storeId);
+
+    List<Employee> findTop6ByStores_IdOrderBySalesTotalDesc(Long storeId);
 }

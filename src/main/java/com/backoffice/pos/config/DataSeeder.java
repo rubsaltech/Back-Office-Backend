@@ -96,7 +96,7 @@ public class DataSeeder implements CommandLineRunner {
         cashier.setEmail("cashier@rubsal.test");
         cashier.setPasswordHash(passwordEncoder.encode("password123"));
         cashier.setPinHash(passwordEncoder.encode("1234"));
-        cashier.setStore(mainStore);
+        cashier.getStores().add(mainStore);
         cashier.setRole(cashierRole);
         employees.save(cashier);
 
