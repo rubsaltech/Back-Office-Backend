@@ -38,6 +38,11 @@ public class OrderItem extends BaseEntity {
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice = BigDecimal.ZERO;
 
+    /** The product's catalog price at order time; differs from unitPrice when the
+     *  cashier manually overrode the price for this line. Shown struck on receipts. */
+    @Column(name = "original_unit_price", precision = 12, scale = 2)
+    private BigDecimal originalUnitPrice;
+
     @Column(name = "tax_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 

@@ -147,10 +147,12 @@ public class OrderService {
 
             // Honor a manual per-line price override when supplied; otherwise use
             // the product's current catalog price. The catalog price is unchanged.
+            BigDecimal catalogPrice = nvl(product.getPrice());
             BigDecimal unitPrice = (line.unitPrice() != null && line.unitPrice().compareTo(BigDecimal.ZERO) >= 0)
                     ? line.unitPrice()
-                    : nvl(product.getPrice());
+                    : catalogPrice;
             item.setUnitPrice(unitPrice);
+            item.setOriginalUnitPrice(catalogPrice);
             item.setTaxAmount(nvl(product.getTaxAmount()).multiply(BigDecimal.valueOf(qty)));
             item.setLineTotal(unitPrice.multiply(BigDecimal.valueOf(qty)));
             order.addItem(item);

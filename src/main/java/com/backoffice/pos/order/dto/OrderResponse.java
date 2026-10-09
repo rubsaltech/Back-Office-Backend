@@ -42,6 +42,7 @@ public record OrderResponse(
             Integer seatNumber,
             int quantity,
             BigDecimal unitPrice,
+            BigDecimal originalUnitPrice,
             BigDecimal taxAmount,
             String specialInstructions,
             BigDecimal lineTotal
@@ -68,7 +69,7 @@ public record OrderResponse(
 
     private static Item toItem(OrderItem i) {
         return new Item(i.getId(), i.getProductId(), i.getProductName(), i.getSeatNumber(),
-                i.getQuantity(), i.getUnitPrice(), i.getTaxAmount(), i.getSpecialInstructions(),
-                i.getLineTotal());
+                i.getQuantity(), i.getUnitPrice(), i.getOriginalUnitPrice(), i.getTaxAmount(),
+                i.getSpecialInstructions(), i.getLineTotal());
     }
 }
