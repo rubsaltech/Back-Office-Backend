@@ -23,12 +23,15 @@ public record OrderRequest(
         @NotEmpty List<Line> items,
         Payment payment
 ) {
-    /** A cart line: a product, quantity, and optional seat. */
+    /** A cart line: a product, quantity, optional seat, and an optional manual
+     *  unit-price override (per this line only; the product's catalog price is
+     *  unchanged). When null, the product's current price is used. */
     public record Line(
             @NotNull Long productId,
             Integer seatNumber,
             Integer quantity,
-            String specialInstructions
+            String specialInstructions,
+            BigDecimal unitPrice
     ) {
     }
 

@@ -48,7 +48,7 @@ public class ProductService {
     public PageResponse<ProductResponse> list(String query, Pageable pageable) {
         Long storeId = storeResolver.currentStoreId();
         Page<Product> page = StringUtils.hasText(query)
-                ? products.findByStoreIdAndNameContainingIgnoreCase(storeId, query, pageable)
+                ? products.searchByStore(storeId, query.trim(), pageable)
                 : products.findByStoreId(storeId, pageable);
         return PageResponse.of(page, ProductResponse::from);
     }
