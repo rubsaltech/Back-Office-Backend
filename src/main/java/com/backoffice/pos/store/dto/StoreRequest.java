@@ -13,6 +13,7 @@ public record StoreRequest(
         String address,
         Double latitude,
         Double longitude,
-        StoreStatus status
+        StoreStatus status,
+        String receiptConfig
 ) {
 }

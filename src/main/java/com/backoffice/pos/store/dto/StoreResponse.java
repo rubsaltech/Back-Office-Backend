@@ -14,10 +14,11 @@ public record StoreResponse(
         String address,
         Double latitude,
         Double longitude,
-        StoreStatus status
+        StoreStatus status,
+        String receiptConfig
 ) {
     public static StoreResponse from(Store s) {
         return new StoreResponse(s.getId(), s.getName(), s.getType(), s.getPhone(), s.getEmail(),
-                s.isMain(), s.getAddress(), s.getLatitude(), s.getLongitude(), s.getStatus());
+                s.isMain(), s.getAddress(), s.getLatitude(), s.getLongitude(), s.getStatus(), s.getReceiptConfig());
     }
 }

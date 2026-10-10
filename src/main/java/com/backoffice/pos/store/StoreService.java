@@ -126,6 +126,7 @@ public class StoreService {
         store.setEmail(req.email());
         store.setMain(req.main());
         store.setAddress(req.address());
+        store.setReceiptConfig(req.receiptConfig());
         store.setLatitude(req.latitude());
         store.setLongitude(req.longitude());
         if (req.status() != null) {

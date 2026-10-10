@@ -33,6 +33,10 @@ public class Store extends TenantEntity {
 
     private String address;
 
+    /** Per-store receipt customization as a JSON string (owned/validated by the client). */
+    @Column(name = "receipt_config", length = 20000)
+    private String receiptConfig;
+
     private Double latitude;
 
     private Double longitude;
