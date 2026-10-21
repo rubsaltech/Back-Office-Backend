@@ -24,13 +24,19 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Page<Product> findByStoreIdAndNameContainingIgnoreCase(Long storeId, String name, Pageable pageable);
 
-    /** Generic product search within a store: matches name, SKU or barcode (case-insensitive). */
+    /**
+     * Generic product search within a store: matches name, SKU, barcode,
+     * description or category name (case-insensitive). LEFT JOIN so products with
+     * no category are still searchable by their other fields.
+     */
     @Query("""
-            select p from Product p
+            select p from Product p left join p.category c
             where p.storeId = :storeId and (
                 lower(p.name) like lower(concat('%', :q, '%'))
                 or lower(p.sku) like lower(concat('%', :q, '%'))
                 or lower(p.barcode) like lower(concat('%', :q, '%'))
+                or lower(p.description) like lower(concat('%', :q, '%'))
+                or lower(c.name) like lower(concat('%', :q, '%'))
             )""")
     Page<Product> searchByStore(@Param("storeId") Long storeId, @Param("q") String q, Pageable pageable);
 
