@@ -3,7 +3,11 @@ package com.backoffice.pos.order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
@@ -22,6 +26,28 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByStoreIdAndStatus(Long storeId, OrderStatus status, Pageable pageable);
 
     Optional<Order> findByIdAndStoreId(Long id, Long storeId);
+
+    // --- dashboard aggregates (exclude voided orders) ---
+    @Query("""
+            select coalesce(sum(o.total), 0) from Order o
+            where o.storeId = :storeId and o.status <> :excluded""")
+    BigDecimal sumTotalByStore(@Param("storeId") Long storeId, @Param("excluded") OrderStatus excluded);
+
+    @Query("""
+            select coalesce(sum(o.total), 0) from Order o
+            where o.storeId = :storeId and o.status <> :excluded
+              and o.createdAt >= :from and o.createdAt < :to""")
+    BigDecimal sumTotalByStoreBetween(@Param("storeId") Long storeId, @Param("excluded") OrderStatus excluded,
+                                      @Param("from") Instant from, @Param("to") Instant to);
+
+    @Query("""
+            select count(o) from Order o
+            where o.storeId = :storeId and o.status <> :excluded
+              and o.createdAt >= :from and o.createdAt < :to""")
+    long countByStoreBetween(@Param("storeId") Long storeId, @Param("excluded") OrderStatus excluded,
+                             @Param("from") Instant from, @Param("to") Instant to);
+
+    long countByStoreIdAndStatusNot(Long storeId, OrderStatus status);
 
     /** Highest order number issued for a business (for the next running number). */
     Optional<Order> findTopByBusinessIdOrderByOrderNumberDesc(Long businessId);

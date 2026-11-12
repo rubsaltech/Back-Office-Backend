@@ -8,10 +8,18 @@ public record DashboardSummary(
         long activeItems,
         long itemsSold,
         long totalEmployees,
+        BigDecimal todaysSales,
+        long todaysOrders,
+        BigDecimal totalSales,
+        long totalOrders,
+        List<TrendPoint> salesTrend,
         List<TopProduct> topSellingProducts,
         List<EmployeeOverview> employeesOverview
 ) {
     public record TopProduct(String name, long sold) {
+    }
+
+    public record TrendPoint(String label, BigDecimal amount) {
     }
 
     public record EmployeeOverview(String id, String name, String email, BigDecimal sales, BigDecimal tips) {

@@ -72,7 +72,7 @@ app:
     # "From" address for outgoing emails. Defaults to the SMTP username.
     # When blank (no MAIL_USERNAME), emails are disabled and the OTP is logged instead.
     from: ${MAIL_FROM:${MAIL_USERNAME:}}
-    from-name: ${MAIL_FROM_NAME:RUBSAL POS}
+    from-name: ${MAIL_FROM_NAME:Smart Flow}
 
 logging:
   level:

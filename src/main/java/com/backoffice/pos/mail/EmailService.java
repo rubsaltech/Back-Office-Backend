@@ -25,7 +25,7 @@ public class EmailService {
 
     public EmailService(ObjectProvider<JavaMailSender> mailSenderProvider,
                         @Value("${app.mail.from:}") String from,
-                        @Value("${app.mail.from-name:RUBSAL POS}") String fromName) {
+                        @Value("${app.mail.from-name:Smart Flow}") String fromName) {
         this.mailSender = mailSenderProvider.getIfAvailable();
         this.from = from;
         this.fromName = fromName;
@@ -48,7 +48,7 @@ public class EmailService {
                 helper.setFrom(from);
             }
             helper.setTo(to);
-            helper.setSubject("Your RUBSAL POS password reset code");
+            helper.setSubject("Your Smart Flow password reset code");
             helper.setText(otpHtml(code, ttlMinutes), true);
             mailSender.send(message);
             log.info("Password reset OTP emailed to {}", to);
@@ -60,7 +60,7 @@ public class EmailService {
     private String otpHtml(String code, int ttlMinutes) {
         return """
                 <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
-                  <h2 style="color:#131f78;margin:0 0 8px">RUBSAL POS</h2>
+                  <h2 style="color:#131f78;margin:0 0 8px">Smart Flow</h2>
                   <p style="margin:0 0 16px;color:#64748b">Use this code to reset your password.</p>
                   <div style="font-size:34px;font-weight:700;letter-spacing:8px;background:#eef0fb;color:#131f78;
                               text-align:center;padding:18px;border-radius:12px">%s</div>

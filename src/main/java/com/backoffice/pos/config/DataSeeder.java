@@ -102,7 +102,7 @@ public class DataSeeder implements CommandLineRunner {
 
         log.info("""
                 ┌───────────────────────────────────────────────────────────┐
-                │  RUBSAL POS — demo data seeded                            │
+                │  Smart Flow — demo data seeded                            │
                 │  Owner login : owner@rubsal.test / password123            │
                 │  Cashier PIN : 1234  (store id: {}, business id: {})       │
                 └───────────────────────────────────────────────────────────┘""",

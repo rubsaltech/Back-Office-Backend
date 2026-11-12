@@ -17,7 +17,7 @@ public class OpenApiConfig {
     public OpenAPI rubsalOpenApi() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("RUBSAL POS API")
+                        .title("Smart Flow API")
                         .version("v1")
                         .description("Multi-tenant restaurant POS backend. "
                                 + "Log in via /api/v1/auth/login, then click Authorize and paste the accessToken."))
