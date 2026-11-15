@@ -2,6 +2,8 @@ package com.backoffice.pos.reporting;
 
 import com.backoffice.pos.catalog.CatalogStatus;
 import com.backoffice.pos.catalog.ProductRepository;
+import com.backoffice.pos.catalog.ProductVariant;
+import com.backoffice.pos.catalog.ProductVariantRepository;
 import com.backoffice.pos.order.OrderRepository;
 import com.backoffice.pos.order.OrderStatus;
 import com.backoffice.pos.reporting.DashboardSummary.EmployeeOverview;
@@ -9,6 +11,7 @@ import com.backoffice.pos.reporting.DashboardSummary.TopProduct;
 import com.backoffice.pos.reporting.DashboardSummary.TrendPoint;
 import com.backoffice.pos.staff.EmployeeRepository;
 import com.backoffice.pos.store.StoreResolver;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,13 +28,16 @@ public class DashboardService {
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE");
 
     private final ProductRepository products;
+    private final ProductVariantRepository variants;
     private final EmployeeRepository employees;
     private final OrderRepository orders;
     private final StoreResolver storeResolver;
 
-    public DashboardService(ProductRepository products, EmployeeRepository employees, OrderRepository orders,
+    public DashboardService(ProductRepository products, ProductVariantRepository variants,
+                            EmployeeRepository employees, OrderRepository orders,
                             StoreResolver storeResolver) {
         this.products = products;
+        this.variants = variants;
         this.employees = employees;
         this.orders = orders;
         this.storeResolver = storeResolver;
@@ -44,8 +50,8 @@ public class DashboardService {
         ZoneId zone = ZoneId.systemDefault();
         LocalDate today = LocalDate.now(zone);
 
-        List<TopProduct> top = products.findTop7ByStoreIdOrderByQuantitySoldDesc(storeId).stream()
-                .map(p -> new TopProduct(p.getName(), p.getQuantitySold()))
+        List<TopProduct> top = variants.findTopSellingByStore(storeId, PageRequest.of(0, 7)).stream()
+                .map(v -> new TopProduct(topName(v), v.getQuantitySold()))
                 .toList();
 
         List<EmployeeOverview> overview = employees.findTop6ByStores_IdOrderBySalesTotalDesc(storeId).stream()
@@ -68,15 +74,22 @@ public class DashboardService {
         return new DashboardSummary(
                 products.countByStoreId(storeId),
                 products.countByStoreIdAndStatus(storeId, CatalogStatus.ACTIVE),
-                products.sumQuantitySoldByStore(storeId),
+                variants.sumQuantitySoldByStore(storeId),
                 employees.countByStores_Id(storeId),
                 orders.sumTotalByStoreBetween(storeId, voided, todayStart, tomorrowStart),
                 orders.countByStoreBetween(storeId, voided, todayStart, tomorrowStart),
                 orders.sumTotalByStore(storeId, voided),
                 orders.countByStoreIdAndStatusNot(storeId, voided),
+                variants.countLowStockByStore(storeId),
                 trend,
                 top,
                 overview
         );
+    }
+
+    /** "Product" for a default variant, "Product — Variant" otherwise. */
+    private static String topName(ProductVariant v) {
+        String product = v.getProduct() != null ? v.getProduct().getName() : v.getVariantName();
+        return v.isDefault() ? product : product + " — " + v.getVariantName();
     }
 }

@@ -45,13 +45,7 @@ public class Product extends StoreScopedEntity {
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal price = BigDecimal.ZERO;
-
-    /** What the business paid for the item (cost); {@link #price} is the sell price. */
-    @Column(name = "purchased_price", nullable = false, precision = 12, scale = 2)
-    private BigDecimal purchasedPrice = BigDecimal.ZERO;
-
+    /** Tax applied to every variant of this product (shared, product-level). */
     @Column(name = "tax_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
@@ -64,19 +58,31 @@ public class Product extends StoreScopedEntity {
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 
-    // --- stock (the "Inventory" tab is a view over these) ---
-    @Column(name = "available_qty", nullable = false)
-    private int availableQty = 0;
+    /** True when the product has real, distinct variants (colour/storage); false
+     *  when it is a simple item carried by a single hidden {@code isDefault} variant. */
+    @Column(name = "has_variants", nullable = false)
+    private boolean hasVariants = false;
 
-    @Column(name = "quantity_sold", nullable = false)
-    private int quantitySold = 0;
-
-    @Column(name = "total_qty", nullable = false)
-    private int totalQty = 0;
+    // --- the sellable SKUs: price & stock live here, not on the product ---
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductVariant> variants = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
     private List<ProductLabel> labels = new ArrayList<>();
+
+    public void addVariant(ProductVariant v) {
+        v.setProduct(this);
+        variants.add(v);
+    }
+
+    /** The default (single-SKU) variant, or the first one if none is flagged. */
+    public ProductVariant defaultVariant() {
+        return variants.stream()
+                .filter(ProductVariant::isDefault)
+                .findFirst()
+                .orElseGet(() -> variants.isEmpty() ? null : variants.get(0));
+    }
 
     public void addLabel(ProductLabel label) {
         label.setProduct(this);

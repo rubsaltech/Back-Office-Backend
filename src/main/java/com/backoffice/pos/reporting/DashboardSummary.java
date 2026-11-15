@@ -12,6 +12,7 @@ public record DashboardSummary(
         long todaysOrders,
         BigDecimal totalSales,
         long totalOrders,
+        long lowStockCount,
         List<TrendPoint> salesTrend,
         List<TopProduct> topSellingProducts,
         List<EmployeeOverview> employeesOverview

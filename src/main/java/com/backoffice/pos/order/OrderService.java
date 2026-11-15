@@ -2,11 +2,15 @@ package com.backoffice.pos.order;
 
 import com.backoffice.pos.catalog.Product;
 import com.backoffice.pos.catalog.ProductRepository;
+import com.backoffice.pos.catalog.ProductVariant;
+import com.backoffice.pos.catalog.ProductVariantRepository;
 import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
 import com.backoffice.pos.floor.RestaurantTable;
 import com.backoffice.pos.floor.TableRepository;
+import com.backoffice.pos.inventory.StockService;
+import com.backoffice.pos.inventory.StockUnit;
 import com.backoffice.pos.order.dto.OrderDtos.OrderSummary;
 import com.backoffice.pos.order.dto.OrderRequest;
 import com.backoffice.pos.order.dto.OrderResponse;
@@ -22,6 +26,10 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
@@ -30,17 +38,28 @@ public class OrderService {
 
     private final OrderRepository orders;
     private final ProductRepository products;
+    private final ProductVariantRepository variants;
     private final TableRepository tables;
     private final PaymentDeviceRepository devices;
     private final StoreResolver storeResolver;
+    private final StockService stockService;
+    private final OrderItemUnitRepository orderItemUnits;
 
-    public OrderService(OrderRepository orders, ProductRepository products, TableRepository tables,
-                        PaymentDeviceRepository devices, StoreResolver storeResolver) {
+    public OrderService(OrderRepository orders, ProductRepository products, ProductVariantRepository variants,
+                        TableRepository tables, PaymentDeviceRepository devices, StoreResolver storeResolver,
+                        StockService stockService, OrderItemUnitRepository orderItemUnits) {
         this.orders = orders;
         this.products = products;
+        this.variants = variants;
         this.tables = tables;
         this.devices = devices;
         this.storeResolver = storeResolver;
+        this.stockService = stockService;
+        this.orderItemUnits = orderItemUnits;
+    }
+
+    /** A pending stock drawdown recorded while building items, applied after the order is saved. */
+    private record Draw(ProductVariant variant, OrderItem item, int quantity, List<Long> unitIds) {
     }
 
     @Transactional(readOnly = true)
@@ -54,7 +73,8 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public OrderResponse get(Long id) {
-        return OrderResponse.from(load(id));
+        Order o = load(id);
+        return OrderResponse.from(o, serialsByItem(o));
     }
 
     @Transactional
@@ -89,18 +109,40 @@ public class OrderService {
             order.setCustomerAddress(req.customerAddress());
         }
 
-        buildItems(order, req, storeId);
+        List<Draw> draws = buildItems(order, req, storeId);
         applyTotals(order, req);
         attachPayment(order, req, storeId);
 
-        return OrderResponse.from(orders.save(order));
+        // Persist the order first so its id (and each item's id) can link the SALE
+        // ledger rows and the sold serial snapshots, then draw down stock.
+        // Insufficient stock / unavailable serials throw and roll the whole tx back.
+        Order saved = orders.save(order);
+        Map<Long, List<String>> serialsByItem = new java.util.HashMap<>();
+        for (Draw d : draws) {
+            List<StockUnit> soldUnits = stockService.sell(
+                    d.variant(), d.quantity(), d.unitIds(), saved.getId(), d.item().getId());
+            if (!soldUnits.isEmpty()) {
+                List<String> serials = new ArrayList<>();
+                for (StockUnit u : soldUnits) {
+                    OrderItemUnit oiu = new OrderItemUnit();
+                    oiu.setOrderItemId(d.item().getId());
+                    oiu.setStockUnitId(u.getId());
+                    oiu.setSerial(u.getSerial());
+                    orderItemUnits.save(oiu);
+                    serials.add(u.getSerial());
+                }
+                serialsByItem.put(d.item().getId(), serials);
+            }
+        }
+        return OrderResponse.from(saved, serialsByItem);
     }
 
     @Transactional
     public OrderResponse updateStatus(Long id, OrderStatus status) {
         Order order = load(id);
         order.setStatus(status);
-        return OrderResponse.from(orders.save(order));
+        Order saved = orders.save(order);
+        return OrderResponse.from(saved, serialsByItem(saved));
     }
 
     @Transactional
@@ -109,8 +151,24 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.COMPLETED) {
             throw new ApiException(HttpStatus.CONFLICT, "A completed order cannot be voided");
         }
-        order.setStatus(OrderStatus.VOID);
-        return OrderResponse.from(orders.save(order));
+        // Return the sold stock to inventory (only on the first void).
+        if (order.getStatus() != OrderStatus.VOID) {
+            restoreStock(order);
+            order.setStatus(OrderStatus.VOID);
+        }
+        Order saved = orders.save(order);
+        return OrderResponse.from(saved, serialsByItem(saved));
+    }
+
+    /** Puts an order's items back into stock (on void) via the ledger. */
+    private void restoreStock(Order order) {
+        for (OrderItem item : order.getItems()) {
+            if (item.getVariantId() == null) {
+                continue;
+            }
+            variants.findByIdAndStoreId(item.getVariantId(), order.getStoreId())
+                    .ifPresent(v -> stockService.restore(v, item.getQuantity(), order.getId(), item.getId()));
+        }
     }
 
     // ---- helpers ----
@@ -120,46 +178,92 @@ public class OrderService {
                 .orElseThrow(() -> NotFoundException.of("Order", id));
     }
 
+    /** The serial numbers sold on each order line, keyed by order-item id. */
+    private Map<Long, List<String>> serialsByItem(Order order) {
+        List<Long> itemIds = order.getItems().stream().map(OrderItem::getId).filter(java.util.Objects::nonNull).toList();
+        if (itemIds.isEmpty()) {
+            return Map.of();
+        }
+        return orderItemUnits.findByOrderItemIdIn(itemIds).stream()
+                .collect(Collectors.groupingBy(
+                        OrderItemUnit::getOrderItemId,
+                        Collectors.mapping(OrderItemUnit::getSerial, Collectors.toList())));
+    }
+
     private long nextOrderNumber(Long businessId) {
         return orders.findTopByBusinessIdOrderByOrderNumberDesc(businessId)
                 .map(o -> o.getOrderNumber() + 1)
                 .orElse(ORDER_NUMBER_BASE + 1);
     }
 
-    private void buildItems(Order order, OrderRequest req, Long storeId) {
+    private List<Draw> buildItems(Order order, OrderRequest req, Long storeId) {
+        List<Draw> draws = new ArrayList<>();
         int sort = 0;
         for (OrderRequest.Line line : req.items()) {
-            if (line == null || line.productId() == null) {
+            if (line == null) {
                 continue;
             }
-            Product product = products.findByIdAndStoreId(line.productId(), storeId)
-                    .orElseThrow(() -> NotFoundException.of("Product", line.productId()));
-
+            ProductVariant variant = resolveVariant(line, storeId);
+            Product product = variant.getProduct();
             int qty = line.quantity() == null || line.quantity() < 1 ? 1 : line.quantity();
 
+            // A serialized line sells specific units; its quantity is the number of
+            // serials chosen, so the cart's quantity is ignored in favour of that.
+            List<Long> unitIds = line.unitIds();
+            if (variant.isSerialized()) {
+                if (unitIds == null || unitIds.isEmpty()) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST,
+                            "Select the unit(s) to sell for \"" + product.getName() + "\"");
+                }
+                qty = unitIds.size();
+            }
+
             OrderItem item = new OrderItem();
-            item.setProductId(product.getId());
-            item.setProductName(product.getName());
+            item.setProductId(product != null ? product.getId() : null);
+            item.setProductName(product != null ? product.getName() : variant.getVariantName());
+            item.setVariantId(variant.getId());
+            item.setVariantName(variant.getVariantName());
             item.setSeatNumber(line.seatNumber());
             item.setQuantity(qty);
             item.setSpecialInstructions(line.specialInstructions());
             item.setSortOrder(sort++);
 
             // Honor a manual per-line price override when supplied; otherwise use
-            // the product's current catalog price. The catalog price is unchanged.
-            BigDecimal catalogPrice = nvl(product.getPrice());
+            // the variant's current catalog price. The catalog price is unchanged.
+            BigDecimal catalogPrice = nvl(variant.getPrice());
             BigDecimal unitPrice = (line.unitPrice() != null && line.unitPrice().compareTo(BigDecimal.ZERO) >= 0)
                     ? line.unitPrice()
                     : catalogPrice;
             item.setUnitPrice(unitPrice);
             item.setOriginalUnitPrice(catalogPrice);
-            item.setTaxAmount(nvl(product.getTaxAmount()).multiply(BigDecimal.valueOf(qty)));
+            BigDecimal tax = product != null ? nvl(product.getTaxAmount()) : BigDecimal.ZERO;
+            item.setTaxAmount(tax.multiply(BigDecimal.valueOf(qty)));
             item.setLineTotal(unitPrice.multiply(BigDecimal.valueOf(qty)));
             order.addItem(item);
+            draws.add(new Draw(variant, item, qty, unitIds));
         }
         if (order.getItems().isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "An order must contain at least one item");
         }
+        return draws;
+    }
+
+    /** Resolves the sold variant for a line: by variantId, else the product's default variant. */
+    private ProductVariant resolveVariant(OrderRequest.Line line, Long storeId) {
+        if (line.variantId() != null) {
+            return variants.findByIdAndStoreId(line.variantId(), storeId)
+                    .orElseThrow(() -> NotFoundException.of("Variant", line.variantId()));
+        }
+        if (line.productId() != null) {
+            Product p = products.findByIdAndStoreId(line.productId(), storeId)
+                    .orElseThrow(() -> NotFoundException.of("Product", line.productId()));
+            ProductVariant dv = p.defaultVariant();
+            if (dv == null) {
+                throw new ApiException(HttpStatus.CONFLICT, "Product \"" + p.getName() + "\" has no variant to sell");
+            }
+            return dv;
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "Each order line needs a product or variant");
     }
 
     private void applyTotals(Order order, OrderRequest req) {

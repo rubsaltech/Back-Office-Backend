@@ -10,6 +10,7 @@ import com.backoffice.pos.order.Payment;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /** Full order representation (used by the listing and the invoice). */
 public record OrderResponse(
@@ -39,13 +40,16 @@ public record OrderResponse(
             Long id,
             Long productId,
             String productName,
+            Long variantId,
+            String variantName,
             Integer seatNumber,
             int quantity,
             BigDecimal unitPrice,
             BigDecimal originalUnitPrice,
             BigDecimal taxAmount,
             String specialInstructions,
-            BigDecimal lineTotal
+            BigDecimal lineTotal,
+            List<String> serials
     ) {
     }
 
@@ -53,7 +57,13 @@ public record OrderResponse(
     }
 
     public static OrderResponse from(Order o) {
-        List<Item> items = o.getItems().stream().map(OrderResponse::toItem).toList();
+        return from(o, Map.of());
+    }
+
+    public static OrderResponse from(Order o, Map<Long, List<String>> serialsByItem) {
+        List<Item> items = o.getItems().stream()
+                .map(i -> toItem(i, serialsByItem.getOrDefault(i.getId(), List.of())))
+                .toList();
         List<PaymentInfo> payments = o.getPayments().stream()
                 .map(p -> new PaymentInfo(p.getMethod().name(), p.getDeviceSerial(), p.getAmount(), p.getStatus().name()))
                 .toList();
@@ -67,9 +77,9 @@ public record OrderResponse(
                 o.getCreatedAt(), items, payments);
     }
 
-    private static Item toItem(OrderItem i) {
-        return new Item(i.getId(), i.getProductId(), i.getProductName(), i.getSeatNumber(),
-                i.getQuantity(), i.getUnitPrice(), i.getOriginalUnitPrice(), i.getTaxAmount(),
-                i.getSpecialInstructions(), i.getLineTotal());
+    private static Item toItem(OrderItem i, List<String> serials) {
+        return new Item(i.getId(), i.getProductId(), i.getProductName(), i.getVariantId(), i.getVariantName(),
+                i.getSeatNumber(), i.getQuantity(), i.getUnitPrice(), i.getOriginalUnitPrice(), i.getTaxAmount(),
+                i.getSpecialInstructions(), i.getLineTotal(), serials);
     }
 }

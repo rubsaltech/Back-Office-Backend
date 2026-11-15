@@ -1,19 +1,37 @@
 package com.backoffice.pos.catalog.dto;
 
-import com.backoffice.pos.catalog.Product;
+import com.backoffice.pos.catalog.ProductVariant;
+import com.backoffice.pos.catalog.TrackingType;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
+/** A variant-centric row for the Inventory tab (stock lens over a variant). */
 public record InventoryResponse(
+        Long variantId,
         Long productId,
-        String name,
-        int availableQty,
+        String productName,
+        String variantName,
+        boolean isDefault,
+        Map<String, String> attributes,
+        String sku,
         BigDecimal price,
+        TrackingType trackingType,
+        int onHand,
         int quantitySold,
-        int totalQty
+        int totalReceived,
+        int lowStockThreshold
 ) {
-    public static InventoryResponse from(Product p) {
-        return new InventoryResponse(p.getId(), p.getName(), p.getAvailableQty(),
-                p.getPrice(), p.getQuantitySold(), p.getTotalQty());
+    public static InventoryResponse from(ProductVariant v) {
+        return new InventoryResponse(
+                v.getId(),
+                v.getProduct() != null ? v.getProduct().getId() : null,
+                v.getProduct() != null ? v.getProduct().getName() : null,
+                v.getVariantName(),
+                v.isDefault(),
+                v.getAttributes() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(v.getAttributes()),
+                v.getSku(), v.getPrice(), v.getTrackingType(),
+                v.getOnHand(), v.getQuantitySold(), v.getTotalReceived(), v.getLowStockThreshold());
     }
 }

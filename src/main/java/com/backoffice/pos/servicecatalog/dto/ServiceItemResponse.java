@@ -2,6 +2,7 @@ package com.backoffice.pos.servicecatalog.dto;
 
 import com.backoffice.pos.catalog.CatalogStatus;
 import com.backoffice.pos.catalog.Product;
+import com.backoffice.pos.catalog.ProductVariant;
 import com.backoffice.pos.label.dto.AttachedLabelResponse;
 import com.backoffice.pos.servicecatalog.ServiceItem;
 import com.backoffice.pos.servicecatalog.ServiceItemLabel;
@@ -47,11 +48,12 @@ public record ServiceItemResponse(
 
     private static LineResponse toLine(ServiceProduct sp) {
         Product p = sp.getProduct();
+        ProductVariant dv = p != null ? p.defaultVariant() : null;
         return new LineResponse(
                 sp.getId(),
                 p != null ? p.getId() : null,
                 p != null ? p.getName() : null,
-                p != null ? p.getPrice() : null,
+                dv != null ? dv.getPrice() : null,
                 sp.getQuantity(),
                 sp.getSortOrder());
     }

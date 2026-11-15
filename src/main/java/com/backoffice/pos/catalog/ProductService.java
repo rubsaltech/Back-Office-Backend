@@ -3,10 +3,12 @@ package com.backoffice.pos.catalog;
 import com.backoffice.pos.catalog.dto.ImportResult;
 import com.backoffice.pos.catalog.dto.ProductRequest;
 import com.backoffice.pos.catalog.dto.ProductResponse;
+import com.backoffice.pos.catalog.dto.VariantRequest;
 import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
+import com.backoffice.pos.inventory.StockService;
 import com.backoffice.pos.label.LabelAttachments;
 import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
@@ -23,8 +25,10 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -32,16 +36,21 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository products;
+    private final ProductVariantRepository variants;
     private final CategoryRepository categories;
     private final LabelAttachments labelAttachments;
     private final StoreResolver storeResolver;
+    private final StockService stockService;
 
-    public ProductService(ProductRepository products, CategoryRepository categories,
-                          LabelAttachments labelAttachments, StoreResolver storeResolver) {
+    public ProductService(ProductRepository products, ProductVariantRepository variants,
+                          CategoryRepository categories, LabelAttachments labelAttachments,
+                          StoreResolver storeResolver, StockService stockService) {
         this.products = products;
+        this.variants = variants;
         this.categories = categories;
         this.labelAttachments = labelAttachments;
         this.storeResolver = storeResolver;
+        this.stockService = stockService;
     }
 
     @Transactional(readOnly = true)
@@ -68,15 +77,20 @@ public class ProductService {
         Product p = new Product();
         p.setBusinessId(businessId);
         p.setStoreId(storeId);
-        apply(p, req);
-        return ProductResponse.from(products.save(p));
+        List<ProductVariant> created = apply(p, req, true);
+        products.save(p);
+        // Opening-balance ledger entry for every new variant.
+        created.forEach(stockService::recordOpening);
+        return ProductResponse.from(p);
     }
 
     @Transactional
     public ProductResponse update(Long id, ProductRequest req) {
         Product p = load(id);
-        apply(p, req);
-        return ProductResponse.from(products.save(p));
+        List<ProductVariant> created = apply(p, req, false);
+        products.save(p);
+        created.forEach(stockService::recordOpening);
+        return ProductResponse.from(p);
     }
 
     @Transactional
@@ -84,6 +98,23 @@ public class ProductService {
         products.delete(load(id));
     }
 
+    /** One parsed CSV data row (1-based line number + its columns). */
+    private record Row(int num, String[] cols) {
+    }
+
+    /**
+     * CSV import. Rows are grouped by product SKU (column 1), so a product with
+     * several variants is expressed as several rows sharing that SKU. Columns:
+     * <pre>
+     *   0 name, 1 sku, 2 barcode, 3 category, 4 price, 5 taxAmount,
+     *   6 availableQty, 7 status,
+     *   8 variantSku, 9 variantName, 10 attributes ("Color=Black;Storage=128GB"),
+     *   11 purchasedPrice, 12 lowStockThreshold, 13 trackingType (NONE|SERIAL)
+     * </pre>
+     * Columns 8+ are optional; a group whose rows carry a variantSku becomes a
+     * multi-variant product, otherwise a single-row group is a simple product
+     * with one Default variant (backward compatible with the old 8-column file).
+     */
     @Transactional
     public ImportResult importCsv(MultipartFile file) {
         Long businessId = TenantContext.requireBusinessId();
@@ -95,9 +126,12 @@ public class ProductService {
         int skipped = 0;
         List<String> errors = new ArrayList<>();
 
+        // ---- Parse and group rows by product SKU (preserving file order) ----
+        Map<String, List<Row>> groups = new LinkedHashMap<>();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String line = reader.readLine(); // header: name,sku,barcode,category,price,taxAmount,availableQty,status
+            reader.readLine(); // header
+            String line;
             int row = 1;
             while ((line = reader.readLine()) != null) {
                 row++;
@@ -105,74 +139,220 @@ public class ProductService {
                     continue;
                 }
                 String[] c = line.split(",", -1);
-                try {
-                    String sku = value(c, 1);
-                    if (!StringUtils.hasText(sku)) {
-                        errors.add("Row " + row + ": missing SKU");
-                        skipped++;
-                        continue;
-                    }
-                    if (products.existsByStoreIdAndSku(storeId, sku)) {
-                        skipped++;
-                        continue;
-                    }
-                    Product p = new Product();
-                    p.setBusinessId(businessId);
-                    p.setStoreId(storeId);
-                    p.setName(value(c, 0));
-                    p.setSku(sku);
-                    p.setBarcode(value(c, 2));
-                    p.setCategory(byName.get(value(c, 3).toLowerCase()));
-                    p.setPrice(decimal(value(c, 4)));
-                    p.setTaxAmount(decimal(value(c, 5)));
-                    p.setAvailableQty(integer(value(c, 6)));
-                    p.setStatus("INACTIVE".equalsIgnoreCase(value(c, 7)) ? CatalogStatus.INACTIVE : CatalogStatus.ACTIVE);
-                    products.save(p);
-                    imported++;
-                } catch (Exception ex) {
-                    errors.add("Row " + row + ": " + ex.getMessage());
+                String sku = value(c, 1);
+                if (!StringUtils.hasText(sku)) {
+                    errors.add("Row " + row + ": missing SKU");
                     skipped++;
+                    continue;
                 }
+                groups.computeIfAbsent(sku, k -> new ArrayList<>()).add(new Row(row, c));
             }
         } catch (Exception e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Could not read CSV file: " + e.getMessage());
+        }
+
+        // ---- Build one product (with its variants) per group ----
+        for (Map.Entry<String, List<Row>> entry : groups.entrySet()) {
+            String sku = entry.getKey();
+            List<Row> rows = entry.getValue();
+            try {
+                if (products.existsByStoreIdAndSku(storeId, sku)) {
+                    skipped++;
+                    continue;
+                }
+                boolean variantMode = rows.stream().anyMatch(r -> StringUtils.hasText(value(r.cols(), 8)));
+                if (!variantMode && rows.size() > 1) {
+                    errors.add("SKU " + sku + ": multiple rows need a variantSku column to be imported as variants");
+                    skipped++;
+                    continue;
+                }
+
+                String[] head = rows.get(0).cols();
+                Product p = new Product();
+                p.setBusinessId(businessId);
+                p.setStoreId(storeId);
+                p.setName(value(head, 0));
+                p.setSku(sku);
+                p.setBarcode(value(head, 2));
+                p.setCategory(byName.get(value(head, 3).toLowerCase()));
+                p.setTaxAmount(decimal(value(head, 5)));
+                p.setStatus(statusOf(value(head, 7)));
+                p.setHasVariants(variantMode);
+
+                List<ProductVariant> created = new ArrayList<>();
+                String groupError = null;
+                Set<String> variantSkus = new java.util.HashSet<>();
+                for (int i = 0; i < rows.size(); i++) {
+                    String[] c = rows.get(i).cols();
+                    String vSku = variantMode ? value(c, 8) : sku;
+                    if (variantMode && !StringUtils.hasText(vSku)) {
+                        groupError = "SKU " + sku + ": every variant row needs a variantSku";
+                        break;
+                    }
+                    if (!variantSkus.add(vSku) || variants.existsByStoreIdAndSku(storeId, vSku)) {
+                        groupError = "Variant SKU already exists: " + vSku;
+                        break;
+                    }
+                    ProductVariant v = new ProductVariant();
+                    v.setBusinessId(businessId);
+                    v.setStoreId(storeId);
+                    v.setDefault(i == 0);
+                    v.setVariantName(variantMode && StringUtils.hasText(value(c, 9)) ? value(c, 9) : "Default");
+                    v.setAttributes(variantMode ? parseAttributes(value(c, 10)) : new LinkedHashMap<>());
+                    v.setSku(vSku);
+                    v.setBarcode(value(c, 2));
+                    v.setPrice(decimal(value(c, 4)));
+                    v.setPurchasedPrice(decimal(value(c, 11)));
+                    TrackingType tracking = "SERIAL".equalsIgnoreCase(value(c, 13)) ? TrackingType.SERIAL : TrackingType.NONE;
+                    v.setTrackingType(tracking);
+                    // Serialized variants open at zero — units are added later by IMEI.
+                    int qty = tracking == TrackingType.SERIAL ? 0 : integer(value(c, 6));
+                    v.setOnHand(qty);
+                    v.setTotalReceived(qty);
+                    if (StringUtils.hasText(value(c, 12))) {
+                        v.setLowStockThreshold(integer(value(c, 12)));
+                    }
+                    v.setStatus(p.getStatus());
+                    p.addVariant(v);
+                    created.add(v);
+                }
+                if (groupError != null) {
+                    errors.add(groupError);
+                    skipped++;
+                    continue;
+                }
+
+                products.save(p);
+                created.forEach(stockService::recordOpening);
+                imported++;
+            } catch (Exception ex) {
+                errors.add("SKU " + sku + ": " + ex.getMessage());
+                skipped++;
+            }
         }
         return new ImportResult(imported, skipped, errors);
     }
 
     // ---- helpers ----
 
+    private static CatalogStatus statusOf(String s) {
+        return "INACTIVE".equalsIgnoreCase(s) ? CatalogStatus.INACTIVE : CatalogStatus.ACTIVE;
+    }
+
+    /** Parse "Color=Black;Storage=128GB" into an ordered attribute map. */
+    private static Map<String, String> parseAttributes(String raw) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        if (!StringUtils.hasText(raw)) {
+            return attrs;
+        }
+        for (String pair : raw.split(";")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                String k = pair.substring(0, eq).trim();
+                String val = pair.substring(eq + 1).trim();
+                if (!k.isEmpty() && !val.isEmpty()) {
+                    attrs.put(k, val);
+                }
+            }
+        }
+        return attrs;
+    }
+
     private Product load(Long id) {
         return products.findByIdAndStoreId(id, storeResolver.currentStoreId())
                 .orElseThrow(() -> NotFoundException.of("Product", id));
     }
 
-    private void apply(Product p, ProductRequest req) {
+    /**
+     * Writes the request onto the product and reconciles its variants. Returns the
+     * list of newly-created variants (so the caller can log their opening balance
+     * after persistence assigns ids). Stock counters of existing variants are left
+     * untouched here — only the inventory endpoints move stock.
+     */
+    private List<ProductVariant> apply(Product p, ProductRequest req, boolean isCreate) {
         Long businessId = TenantContext.requireBusinessId();
         p.setName(req.name());
         p.setSku(req.sku());
         p.setBarcode(req.barcode());
         p.setDescription(req.description());
         p.setImageUrl(req.imageUrl());
-        // Category must belong to the same store as the product.
         p.setCategory(req.categoryId() == null ? null
                 : categories.findByIdAndStoreId(req.categoryId(), p.getStoreId())
                 .orElseThrow(() -> NotFoundException.of("Category", req.categoryId())));
-        p.setPrice(nvl(req.price()));
-        p.setPurchasedPrice(nvl(req.purchasedPrice()));
         p.setTaxAmount(nvl(req.taxAmount()));
         p.setDiscountTitle(req.discountTitle());
         p.setDiscountAmount(nvl(req.discountAmount()));
         if (req.status() != null) {
             p.setStatus(req.status());
         }
-        if (req.availableQty() != null) {
-            p.setAvailableQty(req.availableQty());
-        }
-        if (req.totalQty() != null) {
-            p.setTotalQty(req.totalQty());
-        }
+        p.setHasVariants(Boolean.TRUE.equals(req.hasVariants()));
+
+        List<ProductVariant> created = reconcileVariants(p, req, isCreate);
         rebuildLabels(p, req, businessId);
+        return created;
+    }
+
+    private List<ProductVariant> reconcileVariants(Product p, ProductRequest req, boolean isCreate) {
+        List<VariantRequest> reqVariants = req.variants() == null ? List.of() : req.variants();
+        if (reqVariants.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "A product must have at least one variant");
+        }
+        // Exactly one default; if the client flagged none, the first wins.
+        boolean anyDefault = reqVariants.stream().anyMatch(vr -> Boolean.TRUE.equals(vr.isDefault()));
+
+        Map<Long, ProductVariant> existing = new LinkedHashMap<>();
+        for (ProductVariant v : p.getVariants()) {
+            if (v.getId() != null) {
+                existing.put(v.getId(), v);
+            }
+        }
+
+        List<ProductVariant> ordered = new ArrayList<>();
+        List<ProductVariant> created = new ArrayList<>();
+        for (int i = 0; i < reqVariants.size(); i++) {
+            VariantRequest vr = reqVariants.get(i);
+            boolean isDefault = Boolean.TRUE.equals(vr.isDefault()) || (!anyDefault && i == 0);
+
+            ProductVariant v = (vr.id() != null) ? existing.remove(vr.id()) : null;
+            boolean isNew = (v == null);
+            if (isNew) {
+                v = new ProductVariant();
+                v.setBusinessId(p.getBusinessId());
+                v.setStoreId(p.getStoreId());
+                // Serialized variants open at zero — their stock is added later by
+                // receiving units with IMEIs, so on-hand always equals unit count.
+                boolean serial = vr.trackingType() == TrackingType.SERIAL;
+                int opening = serial || vr.openingQty() == null || vr.openingQty() < 0 ? 0 : vr.openingQty();
+                v.setOnHand(opening);
+                v.setTotalReceived(opening);
+            }
+            // Catalog fields are always writable; stock counters are not touched on edit.
+            v.setVariantName(StringUtils.hasText(vr.variantName()) ? vr.variantName() : "Default");
+            v.setAttributes(vr.attributes() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(vr.attributes()));
+            v.setDefault(isDefault);
+            v.setSku(vr.sku());
+            v.setBarcode(vr.barcode());
+            v.setPrice(nvl(vr.price()));
+            v.setPurchasedPrice(nvl(vr.purchasedPrice()));
+            v.setTrackingType(vr.trackingType() == null ? TrackingType.NONE : vr.trackingType());
+            if (vr.lowStockThreshold() != null) {
+                v.setLowStockThreshold(vr.lowStockThreshold());
+            }
+            if (vr.status() != null) {
+                v.setStatus(vr.status());
+            }
+            ordered.add(v);
+            if (isNew) {
+                created.add(v);
+            }
+        }
+
+        // Replace the product's variant collection (orphanRemoval drops the rest).
+        p.getVariants().clear();
+        for (ProductVariant v : ordered) {
+            p.addVariant(v);
+        }
+        return created;
     }
 
     private void rebuildLabels(Product p, ProductRequest req, Long businessId) {

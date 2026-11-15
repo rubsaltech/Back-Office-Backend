@@ -1,8 +1,9 @@
 target/
-uploads/
+.idea/
+*.iml
 .git/
 .gitignore
-*.md
-.env
-.env.*
-!.env.example
+application-local.yml
+src/main/resources/application-local.yml
+uploads/
+*.log

@@ -50,18 +50,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     long countByCategory_Id(Long categoryId);
 
-    @Query("select coalesce(sum(p.quantitySold), 0) from Product p where p.businessId = :businessId")
-    long sumQuantitySold(@Param("businessId") Long businessId);
-
-    List<Product> findTop7ByBusinessIdOrderByQuantitySoldDesc(Long businessId);
-
     // --- store-scoped dashboard aggregates ---
     long countByStoreId(Long storeId);
 
     long countByStoreIdAndStatus(Long storeId, CatalogStatus status);
-
-    @Query("select coalesce(sum(p.quantitySold), 0) from Product p where p.storeId = :storeId")
-    long sumQuantitySoldByStore(@Param("storeId") Long storeId);
-
-    List<Product> findTop7ByStoreIdOrderByQuantitySoldDesc(Long storeId);
 }

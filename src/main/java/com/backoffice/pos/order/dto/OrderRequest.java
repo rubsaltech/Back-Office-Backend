@@ -28,10 +28,12 @@ public record OrderRequest(
      *  unchanged). When null, the product's current price is used. */
     public record Line(
             @NotNull Long productId,
+            Long variantId,
             Integer seatNumber,
             Integer quantity,
             String specialInstructions,
-            BigDecimal unitPrice
+            BigDecimal unitPrice,
+            List<Long> unitIds
     ) {
     }
 

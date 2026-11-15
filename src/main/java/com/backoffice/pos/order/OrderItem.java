@@ -29,6 +29,13 @@ public class OrderItem extends BaseEntity {
     @Column(name = "product_name", nullable = false)
     private String productName;
 
+    /** The sold variant (nullable snapshot, like {@link #productId}). */
+    @Column(name = "variant_id")
+    private Long variantId;
+
+    @Column(name = "variant_name")
+    private String variantName;
+
     @Column(name = "seat_number")
     private Integer seatNumber;
 
