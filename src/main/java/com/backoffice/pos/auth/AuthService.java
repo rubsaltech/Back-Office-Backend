@@ -63,11 +63,12 @@ public class AuthService {
             throw new ConflictException("A business with this email already exists");
         }
         Business business = new Business();
-        business.setName(req.businessName());
+        // Business name defaults to the owner's name until they set a real one in
+        // Settings; the store they create during onboarding carries its own name.
+        business.setName(req.name());
         business.setEmail(req.email());
         business.setPasswordHash(passwordEncoder.encode(req.password()));
-        business.setOwnerName(req.ownerName());
-        business.setOwnerPhone(req.ownerPhone());
+        business.setOwnerName(req.name());
         business.setStatus(BusinessStatus.APPROVED); // dev: auto-approved (admin gating added later)
         business = businesses.save(business);
 
