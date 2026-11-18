@@ -5,6 +5,7 @@ import com.backoffice.pos.auth.dto.LoginRequest;
 import com.backoffice.pos.auth.dto.PinLoginRequest;
 import com.backoffice.pos.auth.dto.RefreshRequest;
 import com.backoffice.pos.auth.dto.SignupRequest;
+import com.backoffice.pos.auth.dto.SignupVerifyRequest;
 import com.backoffice.pos.auth.dto.TokenResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -25,9 +27,17 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/auth/signup")
-    public ResponseEntity<TokenResponse> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.signup(request));
+    /** Step 1: emails a verification code; the account is not created yet. */
+    @PostMapping("/auth/signup/start")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void signupStart(@Valid @RequestBody SignupRequest request) {
+        authService.startSignup(request);
+    }
+
+    /** Step 2: verifies the code, creates the account, and logs the owner in. */
+    @PostMapping("/auth/signup/verify")
+    public ResponseEntity<TokenResponse> signupVerify(@Valid @RequestBody SignupVerifyRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifySignup(request.email(), request.code()));
     }
 
     @PostMapping("/auth/login")

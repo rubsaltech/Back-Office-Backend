@@ -11,6 +11,7 @@ import com.backoffice.pos.business.BusinessRepository;
 import com.backoffice.pos.business.BusinessStatus;
 import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.common.exception.ConflictException;
+import com.backoffice.pos.mail.EmailService;
 import com.backoffice.pos.security.AuthPrincipal;
 import com.backoffice.pos.security.CurrentUser;
 import com.backoffice.pos.security.JwtProperties;
@@ -21,58 +22,117 @@ import com.backoffice.pos.staff.Permission;
 import com.backoffice.pos.staff.PermissionRepository;
 import com.backoffice.pos.store.Store;
 import com.backoffice.pos.store.StoreRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int SIGNUP_OTP_TTL_MINUTES = 15;
 
     private final BusinessRepository businesses;
     private final EmployeeRepository employees;
     private final PermissionRepository permissions;
     private final StoreRepository stores;
     private final RefreshTokenRepository refreshTokens;
+    private final SignupOtpRepository signupOtps;
     private final BusinessProvisioningService provisioning;
+    private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
 
     public AuthService(BusinessRepository businesses, EmployeeRepository employees, PermissionRepository permissions,
-                       StoreRepository stores, RefreshTokenRepository refreshTokens,
-                       BusinessProvisioningService provisioning, PasswordEncoder passwordEncoder,
-                       JwtService jwtService, JwtProperties jwtProperties) {
+                       StoreRepository stores, RefreshTokenRepository refreshTokens, SignupOtpRepository signupOtps,
+                       BusinessProvisioningService provisioning, EmailService emailService,
+                       PasswordEncoder passwordEncoder, JwtService jwtService, JwtProperties jwtProperties) {
         this.businesses = businesses;
         this.employees = employees;
         this.permissions = permissions;
         this.stores = stores;
         this.refreshTokens = refreshTokens;
+        this.signupOtps = signupOtps;
         this.provisioning = provisioning;
+        this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
     }
 
+    /**
+     * Step 1 of signup: does NOT create the account. Validates the email is free,
+     * parks the pending signup (name + hashed password), and emails a verification
+     * code. The account is created only once the code is confirmed (step 2).
+     */
     @Transactional
-    public TokenResponse signup(SignupRequest req) {
+    public void startSignup(SignupRequest req) {
         if (businesses.existsByEmailIgnoreCase(req.email())) {
-            throw new ConflictException("A business with this email already exists");
+            throw new ConflictException("An account with this email already exists");
         }
+        String code = String.format("%04d", RANDOM.nextInt(10_000));
+        SignupOtp otp = new SignupOtp();
+        otp.setEmail(req.email());
+        otp.setName(req.name());
+        otp.setPasswordHash(passwordEncoder.encode(req.password()));
+        otp.setCodeHash(passwordEncoder.encode(code));
+        otp.setExpiresAt(Instant.now().plus(SIGNUP_OTP_TTL_MINUTES, ChronoUnit.MINUTES));
+        signupOtps.save(otp);
+
+        if (emailService.isEnabled()) {
+            emailService.sendSignupOtp(req.email(), code, SIGNUP_OTP_TTL_MINUTES);
+        } else {
+            log.info("Signup verification code for {} is {} (valid {} min) — SMTP not configured",
+                    req.email(), code, SIGNUP_OTP_TTL_MINUTES);
+        }
+    }
+
+    /**
+     * Step 2 of signup: verifies the emailed code, creates the account from the
+     * parked pending signup, sends a welcome email, and logs the owner in.
+     */
+    @Transactional
+    public TokenResponse verifySignup(String email, String code) {
+        SignupOtp otp = signupOtps.findTopByEmailIgnoreCaseAndUsedFalseOrderByCreatedAtDesc(email)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code"));
+        if (otp.getExpiresAt().isBefore(Instant.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Code has expired");
+        }
+        if (!passwordEncoder.matches(code, otp.getCodeHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code");
+        }
+        if (businesses.existsByEmailIgnoreCase(email)) {
+            throw new ConflictException("An account with this email already exists");
+        }
+
         Business business = new Business();
         // Business name defaults to the owner's name until they set a real one in
         // Settings; the store they create during onboarding carries its own name.
-        business.setName(req.name());
-        business.setEmail(req.email());
-        business.setPasswordHash(passwordEncoder.encode(req.password()));
-        business.setOwnerName(req.name());
+        business.setName(otp.getName());
+        business.setEmail(otp.getEmail());
+        business.setPasswordHash(otp.getPasswordHash()); // already hashed in step 1
+        business.setOwnerName(otp.getName());
         business.setStatus(BusinessStatus.APPROVED); // dev: auto-approved (admin gating added later)
         business = businesses.save(business);
 
         provisioning.provisionDefaults(business);
+
+        otp.setUsed(true);
+        signupOtps.save(otp);
+
+        if (emailService.isEnabled()) {
+            emailService.sendWelcome(business.getEmail(), business.getOwnerName());
+        }
         return issueForOwner(business);
     }
 
