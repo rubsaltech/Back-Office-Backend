@@ -2,7 +2,7 @@ package com.backoffice.pos.auth;
 
 import com.backoffice.pos.auth.dto.PasswordResetDtos.ForgotPasswordRequest;
 import com.backoffice.pos.auth.dto.PasswordResetDtos.ResetPasswordRequest;
-import com.backoffice.pos.auth.dto.PasswordResetDtos.VerifyOtpRequest;
+import com.backoffice.pos.auth.dto.PasswordResetDtos.ValidateTokenRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,21 +21,24 @@ public class PasswordResetController {
         this.service = service;
     }
 
+    /** Email a password-reset link. */
     @PostMapping("/forgot")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void forgot(@Valid @RequestBody ForgotPasswordRequest request) {
         service.request(request.email());
     }
 
-    @PostMapping("/verify-otp")
+    /** Check the reset link is still valid (called when the reset page loads). */
+    @PostMapping("/validate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void verify(@Valid @RequestBody VerifyOtpRequest request) {
-        service.verify(request.email(), request.code());
+    public void validate(@Valid @RequestBody ValidateTokenRequest request) {
+        service.validate(request.token());
     }
 
+    /** Set a new password using the reset-link token. */
     @PostMapping("/reset")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reset(@Valid @RequestBody ResetPasswordRequest request) {
-        service.reset(request.email(), request.code(), request.newPassword());
+        service.reset(request.token(), request.newPassword());
     }
 }

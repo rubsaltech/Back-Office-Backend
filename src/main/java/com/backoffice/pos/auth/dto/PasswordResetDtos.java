@@ -9,15 +9,17 @@ public final class PasswordResetDtos {
     private PasswordResetDtos() {
     }
 
+    /** Request a reset link to be emailed. */
     public record ForgotPasswordRequest(@NotBlank @Email String email) {
     }
 
-    public record VerifyOtpRequest(@NotBlank @Email String email, @NotBlank String code) {
+    /** Check a reset-link token is still valid (used when the reset page loads). */
+    public record ValidateTokenRequest(@NotBlank String token) {
     }
 
+    /** Set a new password using the reset-link token. */
     public record ResetPasswordRequest(
-            @NotBlank @Email String email,
-            @NotBlank String code,
+            @NotBlank String token,
             @NotBlank @Size(min = 8, message = "Password must be at least 8 characters") String newPassword
     ) {
     }

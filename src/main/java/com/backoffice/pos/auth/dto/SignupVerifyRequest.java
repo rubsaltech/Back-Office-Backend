@@ -1,11 +1,9 @@
 package com.backoffice.pos.auth.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
-/** Confirms the signup email-verification code and creates the account. */
+/** Confirms the signup verification link token and creates the account. */
 public record SignupVerifyRequest(
-        @NotBlank @Email String email,
-        @NotBlank String code
+        @NotBlank String token
 ) {
 }

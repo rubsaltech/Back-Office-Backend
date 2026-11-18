@@ -11,6 +11,7 @@ import com.backoffice.pos.business.BusinessRepository;
 import com.backoffice.pos.business.BusinessStatus;
 import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.common.exception.ConflictException;
+import com.backoffice.pos.mail.EmailDomainValidator;
 import com.backoffice.pos.mail.EmailService;
 import com.backoffice.pos.security.AuthPrincipal;
 import com.backoffice.pos.security.CurrentUser;
@@ -24,12 +25,12 @@ import com.backoffice.pos.store.Store;
 import com.backoffice.pos.store.StoreRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -38,8 +39,7 @@ import java.util.List;
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int SIGNUP_OTP_TTL_MINUTES = 15;
+    private static final int SIGNUP_LINK_TTL_MINUTES = 60;
 
     private final BusinessRepository businesses;
     private final EmployeeRepository employees;
@@ -49,14 +49,18 @@ public class AuthService {
     private final SignupOtpRepository signupOtps;
     private final BusinessProvisioningService provisioning;
     private final EmailService emailService;
+    private final EmailDomainValidator emailDomainValidator;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final String webBaseUrl;
 
     public AuthService(BusinessRepository businesses, EmployeeRepository employees, PermissionRepository permissions,
                        StoreRepository stores, RefreshTokenRepository refreshTokens, SignupOtpRepository signupOtps,
                        BusinessProvisioningService provisioning, EmailService emailService,
-                       PasswordEncoder passwordEncoder, JwtService jwtService, JwtProperties jwtProperties) {
+                       EmailDomainValidator emailDomainValidator, PasswordEncoder passwordEncoder,
+                       JwtService jwtService, JwtProperties jwtProperties,
+                       @Value("${app.web.base-url}") String webBaseUrl) {
         this.businesses = businesses;
         this.employees = employees;
         this.permissions = permissions;
@@ -65,54 +69,59 @@ public class AuthService {
         this.signupOtps = signupOtps;
         this.provisioning = provisioning;
         this.emailService = emailService;
+        this.emailDomainValidator = emailDomainValidator;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.webBaseUrl = webBaseUrl;
     }
 
     /**
-     * Step 1 of signup: does NOT create the account. Validates the email is free,
-     * parks the pending signup (name + hashed password), and emails a verification
-     * code. The account is created only once the code is confirmed (step 2).
+     * Step 1 of signup: does NOT create the account. Validates the email looks
+     * real (syntax + its domain can receive mail), parks the pending signup
+     * (name + hashed password), and emails a verification LINK. The account is
+     * created only once that link is clicked (step 2).
      */
     @Transactional
     public void startSignup(SignupRequest req) {
+        if (!emailDomainValidator.hasMailDomain(req.email())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Please enter a valid email address");
+        }
         if (businesses.existsByEmailIgnoreCase(req.email())) {
             throw new ConflictException("An account with this email already exists");
         }
-        String code = String.format("%04d", RANDOM.nextInt(10_000));
+        String token = jwtService.generateLinkToken();
         SignupOtp otp = new SignupOtp();
         otp.setEmail(req.email());
         otp.setName(req.name());
         otp.setPasswordHash(passwordEncoder.encode(req.password()));
-        otp.setCodeHash(passwordEncoder.encode(code));
-        otp.setExpiresAt(Instant.now().plus(SIGNUP_OTP_TTL_MINUTES, ChronoUnit.MINUTES));
+        otp.setTokenHash(jwtService.hashToken(token));
+        otp.setExpiresAt(Instant.now().plus(SIGNUP_LINK_TTL_MINUTES, ChronoUnit.MINUTES));
         signupOtps.save(otp);
 
+        String link = webBaseUrl + "/business/verify-email?token=" + token;
         if (emailService.isEnabled()) {
-            emailService.sendSignupOtp(req.email(), code, SIGNUP_OTP_TTL_MINUTES);
+            emailService.sendSignupVerifyLink(req.email(), link, SIGNUP_LINK_TTL_MINUTES);
         } else {
-            log.info("Signup verification code for {} is {} (valid {} min) — SMTP not configured",
-                    req.email(), code, SIGNUP_OTP_TTL_MINUTES);
+            log.info("Signup verification link for {}: {} (valid {} min) — SMTP not configured",
+                    req.email(), link, SIGNUP_LINK_TTL_MINUTES);
         }
     }
 
     /**
-     * Step 2 of signup: verifies the emailed code, creates the account from the
+     * Step 2 of signup: verifies the link token, creates the account from the
      * parked pending signup, sends a welcome email, and logs the owner in.
      */
     @Transactional
-    public TokenResponse verifySignup(String email, String code) {
-        SignupOtp otp = signupOtps.findTopByEmailIgnoreCaseAndUsedFalseOrderByCreatedAtDesc(email)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code"));
+    public TokenResponse verifySignup(String token) {
+        SignupOtp otp = signupOtps.findByTokenHashAndUsedFalse(jwtService.hashToken(token))
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This verification link is invalid or has already been used"));
         if (otp.getExpiresAt().isBefore(Instant.now())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Code has expired");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This verification link has expired");
         }
-        if (!passwordEncoder.matches(code, otp.getCodeHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code");
-        }
-        if (businesses.existsByEmailIgnoreCase(email)) {
-            throw new ConflictException("An account with this email already exists");
+        if (businesses.existsByEmailIgnoreCase(otp.getEmail())) {
+            // Already verified/created (e.g. link clicked twice).
+            throw new ConflictException("This account is already verified — please log in");
         }
 
         Business business = new Business();

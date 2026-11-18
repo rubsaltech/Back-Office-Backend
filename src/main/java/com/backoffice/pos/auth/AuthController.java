@@ -34,10 +34,10 @@ public class AuthController {
         authService.startSignup(request);
     }
 
-    /** Step 2: verifies the code, creates the account, and logs the owner in. */
+    /** Step 2: the emailed link lands here — verifies the token, creates the account, logs in. */
     @PostMapping("/auth/signup/verify")
     public ResponseEntity<TokenResponse> signupVerify(@Valid @RequestBody SignupVerifyRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifySignup(request.email(), request.code()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.verifySignup(request.token()));
     }
 
     @PostMapping("/auth/login")

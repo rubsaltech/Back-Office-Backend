@@ -4,14 +4,15 @@ import com.backoffice.pos.business.Business;
 import com.backoffice.pos.business.BusinessRepository;
 import com.backoffice.pos.common.exception.ApiException;
 import com.backoffice.pos.mail.EmailService;
+import com.backoffice.pos.security.JwtService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -19,68 +20,69 @@ import java.time.temporal.ChronoUnit;
 public class PasswordResetService {
 
     private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
-    private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int OTP_TTL_MINUTES = 10;
+    private static final int LINK_TTL_MINUTES = 30;
 
     private final BusinessRepository businesses;
-    private final PasswordResetOtpRepository otps;
+    private final PasswordResetOtpRepository tokens;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final JwtService jwtService;
+    private final String webBaseUrl;
 
-    public PasswordResetService(BusinessRepository businesses, PasswordResetOtpRepository otps,
-                                PasswordEncoder passwordEncoder, EmailService emailService) {
+    public PasswordResetService(BusinessRepository businesses, PasswordResetOtpRepository tokens,
+                                PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService,
+                                @Value("${app.web.base-url}") String webBaseUrl) {
         this.businesses = businesses;
-        this.otps = otps;
+        this.tokens = tokens;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.jwtService = jwtService;
+        this.webBaseUrl = webBaseUrl;
     }
 
-    /** Always succeeds (does not reveal whether the email exists). */
+    /** Emails a reset link. Always succeeds (never reveals whether the email exists). */
     @Transactional
     public void request(String email) {
         businesses.findByEmailIgnoreCase(email).ifPresent(b -> {
-            String code = String.format("%04d", RANDOM.nextInt(10_000));
-            PasswordResetOtp otp = new PasswordResetOtp();
-            otp.setEmail(email);
-            otp.setCodeHash(passwordEncoder.encode(code));
-            otp.setExpiresAt(Instant.now().plus(OTP_TTL_MINUTES, ChronoUnit.MINUTES));
-            otps.save(otp);
+            String token = jwtService.generateLinkToken();
+            PasswordResetOtp row = new PasswordResetOtp();
+            row.setEmail(email);
+            row.setTokenHash(jwtService.hashToken(token));
+            row.setExpiresAt(Instant.now().plus(LINK_TTL_MINUTES, ChronoUnit.MINUTES));
+            tokens.save(row);
 
+            String link = webBaseUrl + "/business/reset-password?token=" + token;
             if (emailService.isEnabled()) {
-                // Fire-and-forget on a background thread (handles its own errors).
-                emailService.sendPasswordResetOtp(email, code, OTP_TTL_MINUTES);
+                emailService.sendPasswordResetLink(email, link, LINK_TTL_MINUTES);
             } else {
-                // Dev fallback (no SMTP configured): log the code so it can be used.
-                log.info("Password reset OTP for {} is {} (valid {} min) — SMTP not configured", email, code, OTP_TTL_MINUTES);
+                log.info("Password reset link for {}: {} (valid {} min) — SMTP not configured", email, link, LINK_TTL_MINUTES);
             }
         });
     }
 
+    /** Validate a reset token without consuming it (for the reset page to load). */
     @Transactional(readOnly = true)
-    public void verify(String email, String code) {
-        validate(email, code);
+    public void validate(String token) {
+        resolve(token);
     }
 
     @Transactional
-    public void reset(String email, String code, String newPassword) {
-        PasswordResetOtp otp = validate(email, code);
-        Business business = businesses.findByEmailIgnoreCase(email)
+    public void reset(String token, String newPassword) {
+        PasswordResetOtp row = resolve(token);
+        Business business = businesses.findByEmailIgnoreCase(row.getEmail())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Invalid reset request"));
         business.setPasswordHash(passwordEncoder.encode(newPassword));
         businesses.save(business);
-        otp.setUsed(true);
-        otps.save(otp);
+        row.setUsed(true);
+        tokens.save(row);
     }
 
-    private PasswordResetOtp validate(String email, String code) {
-        PasswordResetOtp otp = otps.findTopByEmailIgnoreCaseAndUsedFalseOrderByCreatedAtDesc(email)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code"));
-        if (otp.getExpiresAt().isBefore(Instant.now())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Code has expired");
+    private PasswordResetOtp resolve(String token) {
+        PasswordResetOtp row = tokens.findByTokenHashAndUsedFalse(jwtService.hashToken(token))
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This reset link is invalid or has already been used"));
+        if (row.getExpiresAt().isBefore(Instant.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This reset link has expired");
         }
-        if (!passwordEncoder.matches(code, otp.getCodeHash())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid or expired code");
-        }
-        return otp;
+        return row;
     }
 }

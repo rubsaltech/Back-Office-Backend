@@ -85,6 +85,17 @@ public class JwtService {
         return UUID.randomUUID().toString() + UUID.randomUUID();
     }
 
+    /** A fresh opaque, URL-safe token for email verification / reset links. */
+    public String generateLinkToken() {
+        return UUID.randomUUID().toString().replace("-", "")
+                + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /** SHA-256 (Base64) of an opaque token — only the hash is stored. */
+    public String hashToken(String value) {
+        return hashRefreshToken(value);
+    }
+
     /** SHA-256 (Base64) of a refresh token — only the hash is stored. */
     public String hashRefreshToken(String value) {
         try {

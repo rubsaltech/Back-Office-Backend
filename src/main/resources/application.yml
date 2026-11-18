@@ -66,6 +66,10 @@ app:
       refresh-token-ttl: ${JWT_REFRESH_TTL:P14D}     # 14 days
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  web:
+    # Public URL of the frontend — used to build email verification / reset links.
+    # Set APP_BASE_URL in production, e.g. https://smartflow.rubsaltech.com
+    base-url: ${APP_BASE_URL:http://localhost:5173}
   uploads:
     dir: ${UPLOADS_DIR:./uploads}
   mail:

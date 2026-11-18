@@ -19,8 +19,8 @@ public class PasswordResetOtp extends BaseEntity {
     @Column(nullable = false)
     private String email;
 
-    @Column(name = "code_hash", nullable = false)
-    private String codeHash;
+    @Column(name = "token_hash", nullable = false)
+    private String tokenHash;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
