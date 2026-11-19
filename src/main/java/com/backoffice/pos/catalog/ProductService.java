@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,7 @@ public class ProductService {
         p.setBusinessId(businessId);
         p.setStoreId(storeId);
         List<ProductVariant> created = apply(p, req, true);
-        products.save(p);
+        products.saveAndFlush(p); // flush so new variants have ids before the ledger write
         // Opening-balance ledger entry for every new variant.
         created.forEach(stockService::recordOpening);
         return ProductResponse.from(p);
@@ -86,9 +87,12 @@ public class ProductService {
 
     @Transactional
     public ProductResponse update(Long id, ProductRequest req) {
-        Product p = load(id);
+        Product p = load(id); // already managed — don't save()/merge (that would copy the graph)
         List<ProductVariant> created = apply(p, req, false);
-        products.save(p);
+        // Flush the managed context so cascade-inserts (new variants) and orphan
+        // deletes are applied, assigning ids to the actual `created` instances
+        // before we write their opening ledger rows.
+        variants.flush();
         created.forEach(stockService::recordOpening);
         return ProductResponse.from(p);
     }
@@ -306,14 +310,23 @@ public class ProductService {
                 existing.put(v.getId(), v);
             }
         }
+        // Drop only the variants the client removed (kept ones stay in place so
+        // their id — and their ledger/units/order links — survive). A clear()+
+        // re-add would re-key the whole collection and orphan the stock ledger.
+        Set<Long> keptIds = new HashSet<>();
+        for (VariantRequest vr : reqVariants) {
+            if (vr.id() != null) {
+                keptIds.add(vr.id());
+            }
+        }
+        p.getVariants().removeIf(v -> v.getId() != null && !keptIds.contains(v.getId()));
 
-        List<ProductVariant> ordered = new ArrayList<>();
         List<ProductVariant> created = new ArrayList<>();
         for (int i = 0; i < reqVariants.size(); i++) {
             VariantRequest vr = reqVariants.get(i);
             boolean isDefault = Boolean.TRUE.equals(vr.isDefault()) || (!anyDefault && i == 0);
 
-            ProductVariant v = (vr.id() != null) ? existing.remove(vr.id()) : null;
+            ProductVariant v = (vr.id() != null) ? existing.get(vr.id()) : null;
             boolean isNew = (v == null);
             if (isNew) {
                 v = new ProductVariant();
@@ -325,6 +338,8 @@ public class ProductService {
                 int opening = serial || vr.openingQty() == null || vr.openingQty() < 0 ? 0 : vr.openingQty();
                 v.setOnHand(opening);
                 v.setTotalReceived(opening);
+                p.addVariant(v);
+                created.add(v);
             }
             // Catalog fields are always writable; stock counters are not touched on edit.
             v.setVariantName(StringUtils.hasText(vr.variantName()) ? vr.variantName() : "Default");
@@ -334,6 +349,9 @@ public class ProductService {
             v.setBarcode(vr.barcode());
             v.setPrice(nvl(vr.price()));
             v.setPurchasedPrice(nvl(vr.purchasedPrice()));
+            v.setTaxAmount(nvl(vr.taxAmount()));
+            v.setDiscountTitle(vr.discountTitle());
+            v.setDiscountAmount(nvl(vr.discountAmount()));
             v.setTrackingType(vr.trackingType() == null ? TrackingType.NONE : vr.trackingType());
             if (vr.lowStockThreshold() != null) {
                 v.setLowStockThreshold(vr.lowStockThreshold());
@@ -341,16 +359,6 @@ public class ProductService {
             if (vr.status() != null) {
                 v.setStatus(vr.status());
             }
-            ordered.add(v);
-            if (isNew) {
-                created.add(v);
-            }
-        }
-
-        // Replace the product's variant collection (orphanRemoval drops the rest).
-        p.getVariants().clear();
-        for (ProductVariant v : ordered) {
-            p.addVariant(v);
         }
         return created;
     }

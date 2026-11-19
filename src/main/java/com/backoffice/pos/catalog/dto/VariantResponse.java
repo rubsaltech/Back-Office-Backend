@@ -17,6 +17,9 @@ public record VariantResponse(
         String barcode,
         BigDecimal price,
         BigDecimal purchasedPrice,
+        BigDecimal taxAmount,
+        String discountTitle,
+        BigDecimal discountAmount,
         TrackingType trackingType,
         int onHand,
         int quantitySold,
@@ -29,6 +32,7 @@ public record VariantResponse(
                 v.getId(), v.getVariantName(),
                 v.getAttributes() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(v.getAttributes()),
                 v.isDefault(), v.getSku(), v.getBarcode(), v.getPrice(), v.getPurchasedPrice(),
+                v.getTaxAmount(), v.getDiscountTitle(), v.getDiscountAmount(),
                 v.getTrackingType(), v.getOnHand(), v.getQuantitySold(), v.getTotalReceived(),
                 v.getLowStockThreshold(), v.getStatus());
     }

@@ -236,7 +236,8 @@ public class OrderService {
                     : catalogPrice;
             item.setUnitPrice(unitPrice);
             item.setOriginalUnitPrice(catalogPrice);
-            BigDecimal tax = product != null ? nvl(product.getTaxAmount()) : BigDecimal.ZERO;
+            // Tax is per-variant now (falls back to the product's for legacy data).
+            BigDecimal tax = nvl(variant.getTaxAmount());
             item.setTaxAmount(tax.multiply(BigDecimal.valueOf(qty)));
             item.setLineTotal(unitPrice.multiply(BigDecimal.valueOf(qty)));
             order.addItem(item);

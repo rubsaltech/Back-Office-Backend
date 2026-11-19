@@ -59,6 +59,15 @@ public class ProductVariant extends StoreScopedEntity {
     @Column(name = "purchased_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal purchasedPrice = BigDecimal.ZERO;
 
+    @Column(name = "tax_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
+    @Column(name = "discount_title")
+    private String discountTitle;
+
+    @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "tracking_type", nullable = false, length = 20)
     private TrackingType trackingType = TrackingType.NONE;
