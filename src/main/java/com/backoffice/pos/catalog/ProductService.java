@@ -290,6 +290,7 @@ public class ProductService {
             p.setStatus(req.status());
         }
         p.setHasVariants(Boolean.TRUE.equals(req.hasVariants()));
+        p.setSaleCaptureLabels(req.saleCaptureLabels() == null ? new ArrayList<>() : new ArrayList<>(req.saleCaptureLabels()));
 
         List<ProductVariant> created = reconcileVariants(p, req, isCreate);
         rebuildLabels(p, req, businessId);

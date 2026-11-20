@@ -11,6 +11,7 @@ public record LabelResponse(
         String name,
         LabelType type,
         boolean required,
+        boolean captureAtSale,
         CatalogStatus status,
         List<OptionResponse> options
 ) {
@@ -21,6 +22,7 @@ public record LabelResponse(
         List<OptionResponse> opts = l.getOptions().stream()
                 .map(o -> new OptionResponse(o.getId(), o.getValue(), o.getSortOrder()))
                 .toList();
-        return new LabelResponse(l.getId(), l.getName(), l.getType(), l.isRequired(), l.getStatus(), opts);
+        return new LabelResponse(l.getId(), l.getName(), l.getType(), l.isRequired(),
+                l.isCaptureAtSale(), l.getStatus(), opts);
     }
 }

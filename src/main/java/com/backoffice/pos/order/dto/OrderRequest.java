@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /** Payload for placing (confirming) a cashier order in one call. */
 public record OrderRequest(
@@ -33,7 +34,9 @@ public record OrderRequest(
             Integer quantity,
             String specialInstructions,
             BigDecimal unitPrice,
-            List<Long> unitIds
+            List<Long> unitIds,
+            /** Capture-at-sale values, one map per unit: [{"IMEI1":"…"}, …]. */
+            List<Map<String, String>> captures
     ) {
     }
 

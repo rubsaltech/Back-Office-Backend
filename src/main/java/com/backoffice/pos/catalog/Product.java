@@ -13,6 +13,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -62,6 +64,12 @@ public class Product extends StoreScopedEntity {
      *  when it is a simple item carried by a single hidden {@code isDefault} variant. */
     @Column(name = "has_variants", nullable = false)
     private boolean hasVariants = false;
+
+    /** Names of "capture at sale" labels (e.g. IMEI1, IMEI2) whose per-unit values
+     *  are entered at the POS, not here. Applies to every variant of this product. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "sale_capture_labels", nullable = false)
+    private List<String> saleCaptureLabels = new ArrayList<>();
 
     // --- the sellable SKUs: price & stock live here, not on the product ---
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)

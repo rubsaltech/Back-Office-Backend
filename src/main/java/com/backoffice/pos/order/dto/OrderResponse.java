@@ -49,7 +49,8 @@ public record OrderResponse(
             BigDecimal taxAmount,
             String specialInstructions,
             BigDecimal lineTotal,
-            List<String> serials
+            List<String> serials,
+            List<Map<String, String>> captures
     ) {
     }
 
@@ -80,6 +81,7 @@ public record OrderResponse(
     private static Item toItem(OrderItem i, List<String> serials) {
         return new Item(i.getId(), i.getProductId(), i.getProductName(), i.getVariantId(), i.getVariantName(),
                 i.getSeatNumber(), i.getQuantity(), i.getUnitPrice(), i.getOriginalUnitPrice(), i.getTaxAmount(),
-                i.getSpecialInstructions(), i.getLineTotal(), serials);
+                i.getSpecialInstructions(), i.getLineTotal(), serials,
+                i.getCaptures() == null ? List.of() : i.getCaptures());
     }
 }

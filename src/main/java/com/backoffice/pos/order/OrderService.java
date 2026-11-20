@@ -218,6 +218,25 @@ public class OrderService {
                 qty = unitIds.size();
             }
 
+            // Capture-at-sale labels (e.g. IMEI): one value set per unit is required.
+            List<String> captureLabels = product != null ? product.getSaleCaptureLabels() : List.of();
+            List<Map<String, String>> captures = line.captures();
+            if (captureLabels != null && !captureLabels.isEmpty()) {
+                if (captures == null || captures.isEmpty()) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST,
+                            "Enter " + String.join(", ", captureLabels) + " for \"" + product.getName() + "\"");
+                }
+                for (Map<String, String> unit : captures) {
+                    for (String lbl : captureLabels) {
+                        if (unit == null || !StringUtils.hasText(unit.get(lbl))) {
+                            throw new ApiException(HttpStatus.BAD_REQUEST,
+                                    "Missing " + lbl + " for a unit of \"" + product.getName() + "\"");
+                        }
+                    }
+                }
+                qty = captures.size();
+            }
+
             OrderItem item = new OrderItem();
             item.setProductId(product != null ? product.getId() : null);
             item.setProductName(product != null ? product.getName() : variant.getVariantName());
@@ -227,6 +246,9 @@ public class OrderService {
             item.setQuantity(qty);
             item.setSpecialInstructions(line.specialInstructions());
             item.setSortOrder(sort++);
+            if (captureLabels != null && !captureLabels.isEmpty()) {
+                item.setCaptures(captures);
+            }
 
             // Honor a manual per-line price override when supplied; otherwise use
             // the variant's current catalog price. The catalog price is unchanged.

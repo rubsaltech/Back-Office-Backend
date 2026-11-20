@@ -9,8 +9,12 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 /** A single line in an order (a product, at a seat). */
 @Entity
@@ -61,4 +65,9 @@ public class OrderItem extends BaseEntity {
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
+
+    /** Capture-at-sale values, one map per unit sold: [{"IMEI1":"…","IMEI2":"…"}, …]. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "captures")
+    private List<Map<String, String>> captures;
 }

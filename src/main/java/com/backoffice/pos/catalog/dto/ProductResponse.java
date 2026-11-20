@@ -25,7 +25,8 @@ public record ProductResponse(
         CatalogStatus status,
         boolean hasVariants,
         List<VariantResponse> variants,
-        List<AttachedLabelResponse> labels
+        List<AttachedLabelResponse> labels,
+        List<String> saleCaptureLabels
 ) {
     public static ProductResponse from(Product p) {
         List<VariantResponse> variants = p.getVariants().stream()
@@ -42,7 +43,8 @@ public record ProductResponse(
                 p.getCategory() != null ? p.getCategory().getId() : null,
                 p.getCategory() != null ? p.getCategory().getName() : null,
                 p.getTaxAmount(), p.getDiscountTitle(), p.getDiscountAmount(), p.getStatus(),
-                p.isHasVariants(), variants, labels);
+                p.isHasVariants(), variants, labels,
+                p.getSaleCaptureLabels() == null ? List.of() : List.copyOf(p.getSaleCaptureLabels()));
     }
 
     private static AttachedLabelResponse toLabel(ProductLabel l) {

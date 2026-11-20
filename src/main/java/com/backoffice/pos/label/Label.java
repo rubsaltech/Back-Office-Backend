@@ -43,6 +43,11 @@ public class Label extends TenantEntity {
     @Column(nullable = false)
     private boolean required = false;
 
+    /** A per-unit label whose value is captured at the POS when sold, not at
+     *  product creation (e.g. IMEI1, IMEI2, serial number). */
+    @Column(name = "capture_at_sale", nullable = false)
+    private boolean captureAtSale = false;
+
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;
 
