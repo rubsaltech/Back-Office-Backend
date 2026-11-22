@@ -22,6 +22,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     boolean existsByStoreIdAndSku(Long storeId, String sku);
 
+    boolean existsByStoreIdAndBarcode(Long storeId, String barcode);
+
     /**
      * Variant search within a store: matches variant name/sku/barcode, the parent
      * product's name/sku/description, or the category name (case-insensitive).

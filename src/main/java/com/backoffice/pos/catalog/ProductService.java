@@ -68,6 +68,36 @@ public class ProductService {
         return ProductResponse.from(load(id));
     }
 
+    /** A fresh EAN-13 barcode, unique within the current store. */
+    @Transactional(readOnly = true)
+    public String generateBarcode() {
+        Long storeId = storeResolver.currentStoreId();
+        for (int attempt = 0; attempt < 25; attempt++) {
+            String code = randomEan13();
+            if (!variants.existsByStoreIdAndBarcode(storeId, code)) {
+                return code;
+            }
+        }
+        throw new ApiException(HttpStatus.CONFLICT, "Could not generate a unique barcode — please try again");
+    }
+
+    private static final java.security.SecureRandom BARCODE_RANDOM = new java.security.SecureRandom();
+
+    /** 13-digit EAN-13: a "20" internal-use prefix + 10 random digits + check digit. */
+    private static String randomEan13() {
+        StringBuilder sb = new StringBuilder("20");
+        for (int i = 0; i < 10; i++) {
+            sb.append(BARCODE_RANDOM.nextInt(10));
+        }
+        int sum = 0;
+        for (int i = 0; i < 12; i++) {
+            int d = sb.charAt(i) - '0';
+            sum += (i % 2 == 0) ? d : d * 3;
+        }
+        sb.append((10 - (sum % 10)) % 10);
+        return sb.toString();
+    }
+
     @Transactional
     public ProductResponse create(ProductRequest req) {
         Long businessId = TenantContext.requireBusinessId();

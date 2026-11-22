@@ -45,6 +45,16 @@ public class ProductController {
         return service.get(id);
     }
 
+    /** Generate a fresh, store-unique barcode (for items without a printed one). */
+    @GetMapping("/barcode")
+    @PreAuthorize("hasAuthority('product.create')")
+    public BarcodeResponse generateBarcode() {
+        return new BarcodeResponse(service.generateBarcode());
+    }
+
+    public record BarcodeResponse(String barcode) {
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAuthority('product.create')")
