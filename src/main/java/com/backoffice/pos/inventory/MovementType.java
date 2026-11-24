@@ -11,5 +11,9 @@ public enum MovementType {
     /** Returned to stock (order void). */
     RETURN,
     /** Manual correction to a new on-hand count. */
-    ADJUST
+    ADJUST,
+    /** Consumed by a service/repair job (part used in a repair). */
+    SERVICE_OUT,
+    /** Returned to stock after being removed from a service/repair job. */
+    SERVICE_RETURN
 }

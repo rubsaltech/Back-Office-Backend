@@ -198,6 +198,40 @@ public class StockService {
         return chosen;
     }
 
+    /**
+     * Draw down stock for a part consumed by a service/repair job. Behaves like a
+     * sale (on-hand down, quantity-sold up) but is ledgered as {@link MovementType#SERVICE_OUT}.
+     * Serialized items aren't supported in service jobs yet.
+     */
+    @Transactional
+    public ProductVariant consumeForService(ProductVariant v, int qty, String reason) {
+        if (v.isSerialized()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "\"" + describe(v) + "\" is serial-tracked and can't be added to a service job yet");
+        }
+        requirePositive(qty);
+        if (v.getOnHand() < qty) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Not enough stock for \"" + describe(v) + "\" (available: " + v.getOnHand() + ")");
+        }
+        v.setOnHand(v.getOnHand() - qty);
+        v.setQuantitySold(v.getQuantitySold() + qty);
+        variants.save(v);
+        record(v, MovementType.SERVICE_OUT, -qty, reason, null);
+        return v;
+    }
+
+    /** Return a part to stock after it's removed from a service/repair job. */
+    @Transactional
+    public ProductVariant returnFromService(ProductVariant v, int qty, String reason) {
+        requirePositive(qty);
+        v.setOnHand(v.getOnHand() + qty);
+        v.setQuantitySold(Math.max(0, v.getQuantitySold() - qty));
+        variants.save(v);
+        record(v, MovementType.SERVICE_RETURN, qty, reason, null);
+        return v;
+    }
+
     /** Return a sale's stock to the variant (order void), by serial or by quantity. */
     @Transactional
     public void restore(ProductVariant v, int qty, Long orderId, Long orderItemId) {

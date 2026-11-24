@@ -14,6 +14,7 @@ import com.backoffice.pos.inventory.StockUnit;
 import com.backoffice.pos.order.dto.OrderDtos.OrderSummary;
 import com.backoffice.pos.order.dto.OrderRequest;
 import com.backoffice.pos.order.dto.OrderResponse;
+import com.backoffice.pos.order.dto.ServiceBillRequest;
 import com.backoffice.pos.security.CurrentUser;
 import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
@@ -135,6 +136,80 @@ public class OrderService {
             }
         }
         return OrderResponse.from(saved, serialsByItem);
+    }
+
+    /**
+     * Create a POS order that bills a service/repair job: a line for the service's
+     * base charge plus a line per part consumed. Stock is NOT drawn here — parts
+     * were already consumed when they were added to the job. Returns the order so
+     * the POS can print its receipt.
+     */
+    @Transactional
+    public OrderResponse createServiceBill(ServiceBillRequest bill) {
+        Long businessId = TenantContext.requireBusinessId();
+        Long storeId = storeResolver.currentStoreId();
+
+        Order order = new Order();
+        order.setBusinessId(businessId);
+        order.setStoreId(storeId);
+        order.setOrderNumber(nextOrderNumber(businessId));
+        order.setType(OrderType.SERVICE);
+        order.setStatus(OrderStatus.CONFIRMED);
+        order.setGuestCount(1);
+        order.setHandlerName(safeHandlerName());
+        if (StringUtils.hasText(bill.customerName()) || StringUtils.hasText(bill.customerPhone())) {
+            order.setCustomerName(bill.customerName());
+            order.setCustomerPhone(bill.customerPhone());
+        }
+
+        int sort = 0;
+        BigDecimal charge = nvl(bill.serviceCharge());
+        OrderItem serviceLine = new OrderItem();
+        serviceLine.setProductName(StringUtils.hasText(bill.serviceName()) ? bill.serviceName() : "Service");
+        serviceLine.setQuantity(1);
+        serviceLine.setUnitPrice(charge);
+        serviceLine.setOriginalUnitPrice(charge);
+        serviceLine.setTaxAmount(BigDecimal.ZERO);
+        serviceLine.setLineTotal(charge);
+        serviceLine.setSortOrder(sort++);
+        order.addItem(serviceLine);
+
+        if (bill.lines() != null) {
+            for (ServiceBillRequest.BillLine line : bill.lines()) {
+                if (line == null) {
+                    continue;
+                }
+                int qty = line.quantity() < 1 ? 1 : line.quantity();
+                BigDecimal unit = nvl(line.unitPrice());
+                OrderItem item = new OrderItem();
+                item.setProductId(line.productId());
+                item.setProductName(line.productName());
+                item.setVariantId(line.variantId());
+                item.setVariantName(line.variantName());
+                item.setQuantity(qty);
+                item.setUnitPrice(unit);
+                item.setOriginalUnitPrice(unit);
+                item.setTaxAmount(BigDecimal.ZERO);
+                item.setLineTotal(unit.multiply(BigDecimal.valueOf(qty)));
+                item.setSortOrder(sort++);
+                order.addItem(item);
+            }
+        }
+
+        BigDecimal subtotal = order.getItems().stream()
+                .map(OrderItem::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        order.setSubtotal(subtotal);
+        order.setTaxTotal(BigDecimal.ZERO);
+        order.setDiscountTotal(BigDecimal.ZERO);
+        order.setTotal(subtotal);
+
+        Payment payment = buildPayment(bill.paymentMethod(), bill.deviceId(), subtotal, storeId);
+        if (payment != null) {
+            order.addPayment(payment);
+        }
+
+        Order saved = orders.save(order);
+        return OrderResponse.from(saved);
     }
 
     @Transactional
@@ -319,20 +394,31 @@ public class OrderService {
 
     private void attachPayment(Order order, OrderRequest req, Long storeId) {
         OrderRequest.Payment p = req.payment();
-        if (p == null || p.method() == null) {
+        if (p == null) {
             return;
         }
+        Payment payment = buildPayment(p.method(), p.deviceId(), order.getTotal(), storeId);
+        if (payment != null) {
+            order.addPayment(payment);
+        }
+    }
+
+    /** Build a Payment for a given method/device/amount, or null when no method is given. */
+    private Payment buildPayment(PaymentMethod method, Long deviceId, BigDecimal amount, Long storeId) {
+        if (method == null) {
+            return null;
+        }
         Payment payment = new Payment();
-        payment.setMethod(p.method());
-        payment.setAmount(order.getTotal());
-        payment.setStatus(p.method() == PaymentMethod.COD ? PaymentStatus.PENDING : PaymentStatus.SUCCESSFUL);
-        if (p.method() == PaymentMethod.CARD && p.deviceId() != null) {
-            PaymentDevice device = devices.findByIdAndStoreId(p.deviceId(), storeId)
-                    .orElseThrow(() -> NotFoundException.of("Payment device", p.deviceId()));
+        payment.setMethod(method);
+        payment.setAmount(amount);
+        payment.setStatus(method == PaymentMethod.COD ? PaymentStatus.PENDING : PaymentStatus.SUCCESSFUL);
+        if (method == PaymentMethod.CARD && deviceId != null) {
+            PaymentDevice device = devices.findByIdAndStoreId(deviceId, storeId)
+                    .orElseThrow(() -> NotFoundException.of("Payment device", deviceId));
             payment.setDeviceId(device.getId());
             payment.setDeviceSerial(device.getSerialNumber());
         }
-        order.addPayment(payment);
+        return payment;
     }
 
     private String safeHandlerName() {
