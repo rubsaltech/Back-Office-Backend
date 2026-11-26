@@ -18,7 +18,7 @@ public final class DefaultPermissions {
             "Manager", List.of("*"),
             "Cashier", List.of(
                     "dashboard.view", "product.view", "category.view", "service.view",
-                    "floor.view", "table.view",
+                    "floor.view", "table.view", "customer.view", "customer.create",
                     "order.view", "order.create", "order.pay"),
             "Kitchen", List.of("order.view")
     );
@@ -31,6 +31,7 @@ public final class DefaultPermissions {
         put(m, "product", "product");
         put(m, "service", "service");
         put(m, "label", "label");
+        put(m, "customer", "customer");
         m.put("inventory.view", "View inventory");
         m.put("inventory.edit", "Edit inventory");
         put(m, "employee", "employee");
