@@ -65,12 +65,6 @@ public class Product extends StoreScopedEntity {
     @Column(name = "has_variants", nullable = false)
     private boolean hasVariants = false;
 
-    /** Names of "capture at sale" labels (e.g. IMEI1, IMEI2) whose per-unit values
-     *  are entered at the POS, not here. Applies to every variant of this product. */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "sale_capture_labels", nullable = false)
-    private List<String> saleCaptureLabels = new ArrayList<>();
-
     // --- the sellable SKUs: price & stock live here, not on the product ---
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProductVariant> variants = new ArrayList<>();

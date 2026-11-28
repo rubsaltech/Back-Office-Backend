@@ -68,6 +68,54 @@ public class CustomerService {
         customers.delete(load(id));
     }
 
+    /**
+     * Record a POS sale against a customer's ledger. When the customer underpays
+     * (received &lt; total), writes a DEBIT for the full total and a CREDIT for the
+     * amount received, so their running balance rises by the unpaid amount. A
+     * fully-paid sale leaves no ledger entries. Received is capped at the total.
+     */
+    @Transactional
+    public void applyOrderCharge(Long customerId, Long orderId, Long orderNumber, BigDecimal total, BigDecimal received) {
+        if (customerId == null) {
+            return;
+        }
+        Long storeId = storeResolver.currentStoreId();
+        Customer c = customers.findByIdAndStoreId(customerId, storeId)
+                .orElseThrow(() -> NotFoundException.of("Customer", customerId));
+        BigDecimal t = nvl(total);
+        BigDecimal r = nvl(received);
+        if (r.compareTo(t) > 0) {
+            r = t; // no overpayment — cap at the total
+        }
+        BigDecimal balance = t.subtract(r);
+        if (balance.compareTo(BigDecimal.ZERO) <= 0) {
+            return; // fully paid — nothing owed, no ledger entries
+        }
+        String ref = orderNumber != null ? "#" + orderNumber : "";
+        tx(c, CustomerTxnType.DEBIT, t, orderId, "Sale " + ref);
+        if (r.compareTo(BigDecimal.ZERO) > 0) {
+            tx(c, CustomerTxnType.CREDIT, r, orderId, "Payment " + ref);
+        }
+        c.setBalance(nvl(c.getBalance()).add(balance));
+        customers.save(c);
+    }
+
+    private void tx(Customer c, CustomerTxnType type, BigDecimal amount, Long orderId, String note) {
+        CustomerTransaction x = new CustomerTransaction();
+        x.setBusinessId(c.getBusinessId());
+        x.setStoreId(c.getStoreId());
+        x.setCustomerId(c.getId());
+        x.setType(type);
+        x.setAmount(amount);
+        x.setOrderId(orderId);
+        x.setNote(note.trim());
+        transactions.save(x);
+    }
+
+    private static BigDecimal nvl(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
     // ---- helpers ----
 
     private Customer load(Long id) {

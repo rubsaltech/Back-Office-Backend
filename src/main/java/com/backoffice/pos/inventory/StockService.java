@@ -11,10 +11,9 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -65,32 +64,38 @@ public class StockService {
     }
 
     /**
-     * Receive serialized units into a SERIAL variant: one {@link StockUnit} per
-     * serial. Serials must be unique within the batch and not already exist for
-     * this business.
+     * Receive units into a unit-tracked variant: one {@link StockUnit} per physical
+     * item. Each entry is the map of per-unit label values captured at stock-in
+     * (e.g. {IMEI1, IMEI2, battery health}); the unit's serial is derived from the
+     * first value for display/lookup.
      */
     @Transactional
-    public ProductVariant receiveSerials(ProductVariant v, List<String> serials, String reason) {
+    public ProductVariant receiveUnits(ProductVariant v, List<Map<String, String>> unitValues, String reason) {
         if (!v.isSerialized()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "This item is not serial-tracked — receive it by quantity");
+                    "This item is not unit-tracked — receive it by quantity");
         }
-        List<String> clean = cleanSerials(serials);
-        if (clean.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter at least one serial number");
+        if (unitValues == null || unitValues.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter the details for at least one unit");
         }
         Instant now = Instant.now();
         List<StockUnit> created = new ArrayList<>();
-        for (String serial : clean) {
-            if (units.existsByBusinessIdAndSerial(v.getBusinessId(), serial)) {
-                throw new ApiException(HttpStatus.CONFLICT, "Serial already exists: " + serial);
+        for (Map<String, String> raw : unitValues) {
+            Map<String, String> clean = new LinkedHashMap<>();
+            if (raw != null) {
+                raw.forEach((k, val) -> {
+                    if (StringUtils.hasText(k) && StringUtils.hasText(val)) {
+                        clean.put(k.trim(), val.trim());
+                    }
+                });
             }
             StockUnit u = new StockUnit();
             u.setBusinessId(v.getBusinessId());
             u.setStoreId(v.getStoreId());
             u.setProductId(v.getProduct() != null ? v.getProduct().getId() : null);
             u.setVariantId(v.getId());
-            u.setSerial(serial);
+            u.setAttributes(clean);
+            u.setSerial(clean.isEmpty() ? null : clean.values().iterator().next());
             u.setStatus(UnitStatus.IN_STOCK);
             u.setReceivedAt(now);
             created.add(u);
@@ -274,23 +279,6 @@ public class StockService {
         m.setReason(reason);
         m.setOrderId(orderId);
         movements.save(m);
-    }
-
-    /** Trim, drop blanks, and reject duplicates within the batch. */
-    private static List<String> cleanSerials(List<String> serials) {
-        if (serials == null) {
-            return List.of();
-        }
-        Set<String> seen = new LinkedHashSet<>();
-        for (String s : serials) {
-            if (StringUtils.hasText(s)) {
-                String trimmed = s.trim();
-                if (!seen.add(trimmed)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "Duplicate serial in this batch: " + trimmed);
-                }
-            }
-        }
-        return new ArrayList<>(seen);
     }
 
     private static void requirePositive(int qty) {

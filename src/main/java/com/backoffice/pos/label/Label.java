@@ -43,10 +43,15 @@ public class Label extends TenantEntity {
     @Column(nullable = false)
     private boolean required = false;
 
-    /** A per-unit label whose value is captured at the POS when sold, not at
-     *  product creation (e.g. IMEI1, IMEI2, serial number). */
-    @Column(name = "capture_at_sale", nullable = false)
-    private boolean captureAtSale = false;
+    /** A per-unit label whose value is captured when stock is RECEIVED, not at
+     *  product creation (e.g. IMEI1, IMEI2, battery health). Each received unit
+     *  gets its own value for this label. */
+    @Column(name = "capture_at_stock_in", nullable = false)
+    private boolean captureAtStockIn = false;
+
+    /** Optional value that pre-fills each unit's field at stock-in (editable). */
+    @Column(name = "default_value")
+    private String defaultValue;
 
     @Column(nullable = false, length = 20)
     private CatalogStatus status = CatalogStatus.ACTIVE;

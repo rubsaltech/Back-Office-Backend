@@ -25,7 +25,6 @@ public record ProductRequest(
         CatalogStatus status,
         Boolean hasVariants,
         List<VariantRequest> variants,
-        List<AttachedLabelRequest> labels,
-        List<String> saleCaptureLabels
+        List<AttachedLabelRequest> labels
 ) {
 }

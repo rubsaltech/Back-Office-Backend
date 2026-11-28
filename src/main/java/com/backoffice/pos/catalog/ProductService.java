@@ -9,7 +9,9 @@ import com.backoffice.pos.common.exception.ConflictException;
 import com.backoffice.pos.common.exception.NotFoundException;
 import com.backoffice.pos.common.web.PageResponse;
 import com.backoffice.pos.inventory.StockService;
+import com.backoffice.pos.label.Label;
 import com.backoffice.pos.label.LabelAttachments;
+import com.backoffice.pos.label.LabelRepository;
 import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import org.springframework.data.domain.Page;
@@ -40,16 +42,18 @@ public class ProductService {
     private final ProductVariantRepository variants;
     private final CategoryRepository categories;
     private final LabelAttachments labelAttachments;
+    private final LabelRepository labelRepo;
     private final StoreResolver storeResolver;
     private final StockService stockService;
 
     public ProductService(ProductRepository products, ProductVariantRepository variants,
                           CategoryRepository categories, LabelAttachments labelAttachments,
-                          StoreResolver storeResolver, StockService stockService) {
+                          LabelRepository labelRepo, StoreResolver storeResolver, StockService stockService) {
         this.products = products;
         this.variants = variants;
         this.categories = categories;
         this.labelAttachments = labelAttachments;
+        this.labelRepo = labelRepo;
         this.storeResolver = storeResolver;
         this.stockService = stockService;
     }
@@ -320,11 +324,30 @@ public class ProductService {
             p.setStatus(req.status());
         }
         p.setHasVariants(Boolean.TRUE.equals(req.hasVariants()));
-        p.setSaleCaptureLabels(req.saleCaptureLabels() == null ? new ArrayList<>() : new ArrayList<>(req.saleCaptureLabels()));
 
         List<ProductVariant> created = reconcileVariants(p, req, isCreate);
         rebuildLabels(p, req, businessId);
+        // A product is unit-tracked when any attached label is capture-at-stock-in
+        // (e.g. IMEI): every variant then tracks individual units. Otherwise plain
+        // quantity tracking. This replaces the old per-variant SERIAL toggle.
+        boolean unitTracked = hasStockInLabels(p, businessId);
+        for (ProductVariant v : p.getVariants()) {
+            v.setTrackingType(unitTracked ? TrackingType.SERIAL : TrackingType.NONE);
+        }
         return created;
+    }
+
+    /** True when any of the product's attached labels is capture-at-stock-in. */
+    private boolean hasStockInLabels(Product p, Long businessId) {
+        List<Long> ids = p.getLabels().stream()
+                .map(ProductLabel::getLabelId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return false;
+        }
+        return labelRepo.findByBusinessIdAndIdInOrderByNameAsc(businessId, ids).stream()
+                .anyMatch(Label::isCaptureAtStockIn);
     }
 
     private List<ProductVariant> reconcileVariants(Product p, ProductRequest req, boolean isCreate) {
@@ -363,12 +386,10 @@ public class ProductService {
                 v = new ProductVariant();
                 v.setBusinessId(p.getBusinessId());
                 v.setStoreId(p.getStoreId());
-                // Serialized variants open at zero — their stock is added later by
-                // receiving units with IMEIs, so on-hand always equals unit count.
-                boolean serial = vr.trackingType() == TrackingType.SERIAL;
-                int opening = serial || vr.openingQty() == null || vr.openingQty() < 0 ? 0 : vr.openingQty();
-                v.setOnHand(opening);
-                v.setTotalReceived(opening);
+                // Products are created with NO stock — every new variant opens at
+                // zero. Stock is added later from the Inventory screen (receive).
+                v.setOnHand(0);
+                v.setTotalReceived(0);
                 p.addVariant(v);
                 created.add(v);
             }

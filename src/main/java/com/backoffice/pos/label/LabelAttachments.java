@@ -63,7 +63,9 @@ public class LabelAttachments {
     }
 
     private void validate(Label label, List<String> values) {
-        if (label.isRequired() && values.isEmpty()) {
+        // Capture-at-stock-in labels carry no value at attach time — each unit's
+        // value is entered when stock is received, so "required" doesn't apply here.
+        if (label.isRequired() && !label.isCaptureAtStockIn() && values.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Label \"" + label.getName() + "\" is required");
         }
         switch (label.getType()) {

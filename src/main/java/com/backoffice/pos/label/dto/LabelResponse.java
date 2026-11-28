@@ -11,7 +11,8 @@ public record LabelResponse(
         String name,
         LabelType type,
         boolean required,
-        boolean captureAtSale,
+        boolean captureAtStockIn,
+        String defaultValue,
         CatalogStatus status,
         List<OptionResponse> options
 ) {
@@ -23,6 +24,6 @@ public record LabelResponse(
                 .map(o -> new OptionResponse(o.getId(), o.getValue(), o.getSortOrder()))
                 .toList();
         return new LabelResponse(l.getId(), l.getName(), l.getType(), l.isRequired(),
-                l.isCaptureAtSale(), l.getStatus(), opts);
+                l.isCaptureAtStockIn(), l.getDefaultValue(), l.getStatus(), opts);
     }
 }

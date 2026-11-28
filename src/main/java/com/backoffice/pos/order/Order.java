@@ -54,6 +54,10 @@ public class Order extends TenantEntity {
     @Column(name = "guest_count", nullable = false)
     private int guestCount = 1;
 
+    /** Optional POS customer this order is attached to (null for a walk-in). */
+    @Column(name = "customer_id")
+    private Long customerId;
+
     @Column(name = "customer_name")
     private String customerName;
 

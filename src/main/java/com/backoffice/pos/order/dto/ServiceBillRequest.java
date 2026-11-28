@@ -13,8 +13,10 @@ import java.util.List;
 public record ServiceBillRequest(
         String serviceName,
         BigDecimal serviceCharge,
+        Long customerId,
         String customerName,
         String customerPhone,
+        BigDecimal amountReceived,
         List<BillLine> lines,
         PaymentMethod paymentMethod,
         Long deviceId

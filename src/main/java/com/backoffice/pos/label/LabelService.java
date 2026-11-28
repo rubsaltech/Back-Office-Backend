@@ -81,7 +81,8 @@ public class LabelService {
         l.setName(req.name().trim());
         l.setType(req.type());
         l.setRequired(req.required());
-        l.setCaptureAtSale(req.captureAtSale());
+        l.setCaptureAtStockIn(req.captureAtStockIn());
+        l.setDefaultValue(StringUtils.hasText(req.defaultValue()) ? req.defaultValue().trim() : null);
         if (req.status() != null) {
             l.setStatus(req.status());
         }

@@ -11,7 +11,8 @@ public record LabelRequest(
         @NotBlank String name,
         @NotNull LabelType type,
         boolean required,
-        boolean captureAtSale,
+        boolean captureAtStockIn,
+        String defaultValue,
         CatalogStatus status,
         /** Only used for SINGLE_SELECT / MULTI_SELECT; ignored for INPUT. */
         List<Option> options

@@ -211,7 +211,7 @@ public class ServiceJobService {
 
         ServiceBillRequest bill = new ServiceBillRequest(
                 job.getServiceType(), job.getServiceCharge(),
-                job.getCustomerName(), job.getCustomerPhone(),
+                req.customerId(), job.getCustomerName(), job.getCustomerPhone(), req.amountReceived(),
                 lines, req.paymentMethod(), req.deviceId());
 
         OrderResponse order = orderService.createServiceBill(bill);

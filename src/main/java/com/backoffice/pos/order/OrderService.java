@@ -45,10 +45,12 @@ public class OrderService {
     private final StoreResolver storeResolver;
     private final StockService stockService;
     private final OrderItemUnitRepository orderItemUnits;
+    private final com.backoffice.pos.customer.CustomerService customerService;
 
     public OrderService(OrderRepository orders, ProductRepository products, ProductVariantRepository variants,
                         TableRepository tables, PaymentDeviceRepository devices, StoreResolver storeResolver,
-                        StockService stockService, OrderItemUnitRepository orderItemUnits) {
+                        StockService stockService, OrderItemUnitRepository orderItemUnits,
+                        com.backoffice.pos.customer.CustomerService customerService) {
         this.orders = orders;
         this.products = products;
         this.variants = variants;
@@ -57,6 +59,7 @@ public class OrderService {
         this.storeResolver = storeResolver;
         this.stockService = stockService;
         this.orderItemUnits = orderItemUnits;
+        this.customerService = customerService;
     }
 
     /** A pending stock drawdown recorded while building items, applied after the order is saved. */
@@ -103,6 +106,7 @@ public class OrderService {
             order.setTableId(table.getId());
             order.setTableName(table.getName());
         }
+        order.setCustomerId(req.customerId());
         if (StringUtils.hasText(req.customerName()) || StringUtils.hasText(req.customerAddress())
                 || StringUtils.hasText(req.customerPhone())) {
             order.setCustomerName(req.customerName());
@@ -112,7 +116,15 @@ public class OrderService {
 
         List<Draw> draws = buildItems(order, req, storeId);
         applyTotals(order, req);
-        attachPayment(order, req, storeId);
+        // Payment records what was actually received (may be less than the total
+        // for a credit sale); the unpaid balance goes on the customer's ledger.
+        BigDecimal received = cap(req.amountReceived(), order.getTotal());
+        if (req.payment() != null) {
+            Payment pay = buildPayment(req.payment().method(), req.payment().deviceId(), received, storeId);
+            if (pay != null) {
+                order.addPayment(pay);
+            }
+        }
 
         // Persist the order first so its id (and each item's id) can link the SALE
         // ledger rows and the sold serial snapshots, then draw down stock.
@@ -135,6 +147,8 @@ public class OrderService {
                 serialsByItem.put(d.item().getId(), serials);
             }
         }
+        // Log the sale against the customer's ledger (balance owed, if any).
+        customerService.applyOrderCharge(req.customerId(), saved.getId(), saved.getOrderNumber(), saved.getTotal(), received);
         return OrderResponse.from(saved, serialsByItem);
     }
 
@@ -157,6 +171,7 @@ public class OrderService {
         order.setStatus(OrderStatus.CONFIRMED);
         order.setGuestCount(1);
         order.setHandlerName(safeHandlerName());
+        order.setCustomerId(bill.customerId());
         if (StringUtils.hasText(bill.customerName()) || StringUtils.hasText(bill.customerPhone())) {
             order.setCustomerName(bill.customerName());
             order.setCustomerPhone(bill.customerPhone());
@@ -203,12 +218,14 @@ public class OrderService {
         order.setDiscountTotal(BigDecimal.ZERO);
         order.setTotal(subtotal);
 
-        Payment payment = buildPayment(bill.paymentMethod(), bill.deviceId(), subtotal, storeId);
+        BigDecimal received = cap(bill.amountReceived(), subtotal);
+        Payment payment = buildPayment(bill.paymentMethod(), bill.deviceId(), received, storeId);
         if (payment != null) {
             order.addPayment(payment);
         }
 
         Order saved = orders.save(order);
+        customerService.applyOrderCharge(bill.customerId(), saved.getId(), saved.getOrderNumber(), subtotal, received);
         return OrderResponse.from(saved);
     }
 
@@ -293,25 +310,6 @@ public class OrderService {
                 qty = unitIds.size();
             }
 
-            // Capture-at-sale labels (e.g. IMEI): one value set per unit is required.
-            List<String> captureLabels = product != null ? product.getSaleCaptureLabels() : List.of();
-            List<Map<String, String>> captures = line.captures();
-            if (captureLabels != null && !captureLabels.isEmpty()) {
-                if (captures == null || captures.isEmpty()) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST,
-                            "Enter " + String.join(", ", captureLabels) + " for \"" + product.getName() + "\"");
-                }
-                for (Map<String, String> unit : captures) {
-                    for (String lbl : captureLabels) {
-                        if (unit == null || !StringUtils.hasText(unit.get(lbl))) {
-                            throw new ApiException(HttpStatus.BAD_REQUEST,
-                                    "Missing " + lbl + " for a unit of \"" + product.getName() + "\"");
-                        }
-                    }
-                }
-                qty = captures.size();
-            }
-
             OrderItem item = new OrderItem();
             item.setProductId(product != null ? product.getId() : null);
             item.setProductName(product != null ? product.getName() : variant.getVariantName());
@@ -321,9 +319,6 @@ public class OrderService {
             item.setQuantity(qty);
             item.setSpecialInstructions(line.specialInstructions());
             item.setSortOrder(sort++);
-            if (captureLabels != null && !captureLabels.isEmpty()) {
-                item.setCaptures(captures);
-            }
 
             // Honor a manual per-line price override when supplied; otherwise use
             // the variant's current catalog price. The catalog price is unchanged.
@@ -392,15 +387,14 @@ public class OrderService {
         order.setTotal(subtotal.add(taxTotal).subtract(discountTotal));
     }
 
-    private void attachPayment(Order order, OrderRequest req, Long storeId) {
-        OrderRequest.Payment p = req.payment();
-        if (p == null) {
-            return;
+    /** Amount actually received: defaults to the full total, never negative, never above the total. */
+    private static BigDecimal cap(BigDecimal received, BigDecimal total) {
+        BigDecimal t = nvl(total);
+        if (received == null) {
+            return t;
         }
-        Payment payment = buildPayment(p.method(), p.deviceId(), order.getTotal(), storeId);
-        if (payment != null) {
-            order.addPayment(payment);
-        }
+        BigDecimal r = received.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : received;
+        return r.compareTo(t) > 0 ? t : r;
     }
 
     /** Build a Payment for a given method/device/amount, or null when no method is given. */

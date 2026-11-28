@@ -7,12 +7,16 @@ import com.backoffice.pos.inventory.StockMovementRepository;
 import com.backoffice.pos.inventory.StockService;
 import com.backoffice.pos.inventory.StockUnitRepository;
 import com.backoffice.pos.inventory.dto.AdjustRequest;
+import com.backoffice.pos.inventory.dto.CaptureLabelResponse;
 import com.backoffice.pos.inventory.dto.ReceiveRequest;
 import com.backoffice.pos.inventory.dto.RetireRequest;
 import com.backoffice.pos.inventory.dto.StockMovementResponse;
 import com.backoffice.pos.inventory.dto.StockUnitResponse;
 import com.backoffice.pos.inventory.dto.UnitLookupResponse;
 import com.backoffice.pos.inventory.StockUnit;
+import com.backoffice.pos.label.Label;
+import com.backoffice.pos.label.LabelOption;
+import com.backoffice.pos.label.LabelRepository;
 import com.backoffice.pos.store.StoreResolver;
 import com.backoffice.pos.tenancy.TenantContext;
 import jakarta.validation.Valid;
@@ -47,14 +51,17 @@ public class InventoryController {
     private final StockUnitRepository units;
     private final StockService stockService;
     private final StoreResolver storeResolver;
+    private final LabelRepository labels;
 
     public InventoryController(ProductVariantRepository variants, StockMovementRepository movements,
-                              StockUnitRepository units, StockService stockService, StoreResolver storeResolver) {
+                              StockUnitRepository units, StockService stockService, StoreResolver storeResolver,
+                              LabelRepository labels) {
         this.variants = variants;
         this.movements = movements;
         this.units = units;
         this.stockService = stockService;
         this.storeResolver = storeResolver;
+        this.labels = labels;
     }
 
     @GetMapping
@@ -115,6 +122,15 @@ public class InventoryController {
                 .toList();
     }
 
+    /** The capture-at-stock-in labels to collect per unit when receiving this variant. */
+    @GetMapping("/variants/{variantId}/capture-labels")
+    @PreAuthorize("hasAuthority('inventory.view')")
+    @Transactional(readOnly = true)
+    public List<CaptureLabelResponse> captureLabels(@PathVariable Long variantId) {
+        ProductVariant v = requireVariant(variantId);
+        return captureLabelsFor(v);
+    }
+
     @PostMapping("/variants/{variantId}/receive")
     @PreAuthorize("hasAuthority('inventory.edit')")
     @Transactional
@@ -122,11 +138,36 @@ public class InventoryController {
         ProductVariant v = requireVariant(variantId);
         String reason = StringUtils.hasText(req.reason()) ? req.reason() : "Restock";
         if (v.isSerialized()) {
-            stockService.receiveSerials(v, req.serials(), reason);
+            stockService.receiveUnits(v, req.units(), reason);
         } else {
             stockService.receive(v, req.quantity() == null ? 0 : req.quantity(), reason);
         }
         return InventoryResponse.from(v);
+    }
+
+    /** Resolve the product's attached labels that are capture-at-stock-in, in attach order. */
+    private List<CaptureLabelResponse> captureLabelsFor(ProductVariant v) {
+        if (v.getProduct() == null || v.getProduct().getLabels().isEmpty()) {
+            return List.of();
+        }
+        Long businessId = TenantContext.requireBusinessId();
+        var attached = v.getProduct().getLabels();
+        List<Long> ids = attached.stream().map(com.backoffice.pos.catalog.ProductLabel::getLabelId)
+                .filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<Long, Label> byId = labels.findByBusinessIdAndIdInOrderByNameAsc(businessId, ids).stream()
+                .collect(java.util.stream.Collectors.toMap(Label::getId, java.util.function.Function.identity(), (a, b) -> a));
+        List<CaptureLabelResponse> result = new java.util.ArrayList<>();
+        for (var pl : attached) {
+            Label lab = byId.get(pl.getLabelId());
+            if (lab != null && lab.isCaptureAtStockIn()) {
+                List<String> opts = lab.getOptions().stream().map(LabelOption::getValue).toList();
+                result.add(new CaptureLabelResponse(lab.getName(), lab.getType(), opts, lab.getDefaultValue(), lab.isRequired()));
+            }
+        }
+        return result;
     }
 
     @PostMapping("/variants/{variantId}/units/{unitId}/retire")
